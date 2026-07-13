@@ -1,0 +1,37 @@
+name: Delivery epic
+description: A parent issue composed of native, independently verifiable Sub-issues.
+title: "[EPIC-ID] "
+labels: ["epic"]
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: 目标结果
+      description: Describe the integrated capability delivered when every child is complete.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: 当前问题与影响
+    validations:
+      required: true
+  - type: textarea
+    id: children
+    attributes:
+      label: Sub-issues
+      description: Add native Sub-issues after creating the Epic.
+      value: |
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 集成验收标准
+      value: |
+        - [ ] All Sub-issues are closed
+        - [ ] End-to-end verification passes
+    validations:
+      required: true
+

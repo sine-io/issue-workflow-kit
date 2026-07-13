@@ -1,0 +1,94 @@
+{
+  "$schema": "./project-bootstrap.schema.json",
+  "project": {
+    "title": "{{repo}} Delivery",
+    "owner": "{{owner}}",
+    "visibility": "PRIVATE",
+    "description": "Example delivery board.",
+    "statusOptions": [
+      { "name": "Backlog", "color": "GRAY", "description": "Not ready to start" },
+      { "name": "Ready", "color": "BLUE", "description": "Dependencies are satisfied" },
+      { "name": "In progress", "color": "YELLOW", "description": "Implementation is active" },
+      { "name": "In review", "color": "PURPLE", "description": "Waiting for review or acceptance" },
+      { "name": "Done", "color": "GREEN", "description": "Acceptance criteria are complete" }
+    ],
+    "initialStatus": "Backlog",
+    "fields": [
+      { "name": "Priority", "source": "priority", "options": ["P0", "P1", "P2"] },
+      { "name": "Phase", "source": "phase", "options": ["1 Foundation", "2 Delivery", "3 Polish"] }
+    ]
+  },
+  "labels": [
+    { "name": "bug", "color": "D73A4A", "description": "Something is not working" },
+    { "name": "enhancement", "color": "A2EEEF", "description": "New feature or request" },
+    { "name": "documentation", "color": "0075CA", "description": "Documentation improvement" },
+    { "name": "priority:P0", "color": "B60205", "description": "Highest priority" },
+    { "name": "priority:P1", "color": "D93F0B", "description": "Important delivery work" },
+    { "name": "priority:P2", "color": "FBCA04", "description": "Polish and maintenance" },
+    { "name": "area:system", "color": "0E8A16", "description": "System and data" },
+    { "name": "area:frontend", "color": "1D76DB", "description": "Frontend" },
+    { "name": "area:backend", "color": "5319E7", "description": "Backend" },
+    { "name": "epic", "color": "3E4B9E", "description": "Parent delivery issue" },
+    { "name": "subtask", "color": "D4C5F9", "description": "Native sub-issue" },
+    { "name": "data-quality", "color": "006B75", "description": "Data quality and provenance" },
+    { "name": "tech-debt", "color": "BFDADC", "description": "Technical debt" }
+  ],
+  "issues": [
+    {
+      "id": "EPIC-001",
+      "title": "建立可信数据入口",
+      "priority": "P0",
+      "phase": "1 Foundation",
+      "area": "area:system",
+      "labels": ["enhancement", "data-quality"],
+      "goal": "让产品只使用可追溯的数据生成正式结论。",
+      "value": "用户可以判断数据来自哪里、何时采集以及是否足够可信。",
+      "current": "当前数据没有统一来源、批次和质量信息。",
+      "expected": "建立来源、导入和质量状态的完整闭环。",
+      "scope": ["完成所有原生 Sub-issues", "通过端到端导入验证"],
+      "outOfScope": ["自动爬虫不在本 Epic 范围"],
+      "dataRequirements": ["每条记录关联来源、批次和采集时间"],
+      "acceptance": ["所有子任务关闭", "真实数据可从导入追溯到页面"],
+      "tests": ["运行服务端和前端完整验证"],
+      "dependsOn": [],
+      "children": [
+        {
+          "id": "EPIC-001.1",
+          "title": "建立数据源和批次模型",
+          "priority": "P0",
+          "phase": "1 Foundation",
+          "area": "area:backend",
+          "labels": ["enhancement", "data-quality"],
+          "goal": "保存数据源、批次、采集时间和覆盖状态。",
+          "value": "每个数据点都能追溯。",
+          "current": "数据库没有批次级来源模型。",
+          "expected": "新增模型、迁移和 repository。",
+          "scope": ["新增 schema", "新增 repository", "补充测试"],
+          "outOfScope": ["本任务不实现上传页面"],
+          "dataRequirements": ["批次必须关联数据源和目标对象"],
+          "acceptance": ["迁移可重复执行", "repository 测试通过"],
+          "tests": ["运行后端测试"],
+          "dependsOn": []
+        }
+      ]
+    },
+    {
+      "id": "TASK-001",
+      "title": "页面展示真实数据来源",
+      "priority": "P1",
+      "phase": "2 Delivery",
+      "area": "area:frontend",
+      "labels": ["enhancement"],
+      "goal": "在页面中展示来源、采集时间和数据质量。",
+      "value": "用户可以直接判断页面结论是否可信。",
+      "current": "页面只显示数字，没有来源信息。",
+      "expected": "所有正式指标显示来源与质量状态。",
+      "scope": ["展示来源", "展示采集时间", "展示质量 warning"],
+      "outOfScope": ["本任务不修改数据采集逻辑"],
+      "dataRequirements": ["只使用 API 返回的 provenance"],
+      "acceptance": ["数据来源可见", "过期数据有明确警告"],
+      "tests": ["覆盖正常、过期和缺失状态"],
+      "dependsOn": ["EPIC-001.1"]
+    }
+  ]
+}

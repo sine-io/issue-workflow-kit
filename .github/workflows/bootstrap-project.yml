@@ -1,0 +1,42 @@
+name: Bootstrap Issues and Project
+
+on:
+  workflow_dispatch:
+    inputs:
+      issues_only:
+        description: Skip GitHub Project creation
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: bootstrap-issues-project
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.PROJECT_TOKEN || github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate manifest and tests
+        run: |
+          npm test
+          npm run validate
+      - name: Bootstrap GitHub state
+        shell: bash
+        run: |
+          args=(--config config/project-bootstrap.json --repo "$GITHUB_REPOSITORY")
+          if [[ "${{ inputs.issues_only }}" == "true" ]]; then
+            args+=(--issues-only)
+          fi
+          node scripts/github-bootstrap.mjs "${args[@]}"
+
