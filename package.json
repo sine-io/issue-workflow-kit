@@ -7,13 +7,10 @@
     "node": ">=20"
   },
   "scripts": {
-    "bootstrap": "node scripts/github-bootstrap.mjs --config config/project-bootstrap.json",
-    "bootstrap:issues": "node scripts/github-bootstrap.mjs --config config/project-bootstrap.json --issues-only",
     "plan:validate": "node scripts/issue-workflow.mjs plan:validate",
     "issues:preview": "node scripts/issue-workflow.mjs issues:preview",
     "issues:apply": "node scripts/issue-workflow.mjs issues:apply",
-    "test": "node --test",
-    "validate": "node scripts/github-bootstrap.mjs --config config/project-bootstrap.json --dry-run"
+    "test": "node --test"
   },
   "dependencies": {
     "ajv": "8.20.0"
