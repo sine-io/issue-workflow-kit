@@ -67,6 +67,14 @@ export class GitHubAdapter {
     throw new GitHubCommandError(args, lastResult);
   }
 
+  checkCli() {
+    this.run(["--version"]);
+  }
+
+  checkAuth() {
+    this.run(["auth", "status"]);
+  }
+
   api(method, endpoint, body) {
     const args = [
       "api", endpoint, "--method", method,
@@ -84,6 +92,14 @@ export class GitHubAdapter {
     } catch (error) {
       throw new Error(`GitHub REST API returned invalid JSON for ${method} ${endpoint}: ${error.message}`);
     }
+  }
+
+  getRepository(repository) {
+    return this.api("GET", `repos/${repository}`);
+  }
+
+  getCommit(repository, revision) {
+    return this.api("GET", `repos/${repository}/commits/${encodeURIComponent(revision)}`);
   }
 
   graphql(query, variables = {}) {
