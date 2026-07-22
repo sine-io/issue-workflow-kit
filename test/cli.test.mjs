@@ -106,6 +106,34 @@ test("authentication failure stops before any write", async () => {
   assert.deepEqual(adapter.events, ["checkCli", "checkAuth"]);
 });
 
+test("insufficient repository permission stops before any write", async () => {
+  const adapter = new CliAdapter();
+  adapter.getRepository = async () => {
+    adapter.events.push("getRepository");
+    return { nameWithOwner: repository, has_issues: true, permissions: { push: false } };
+  };
+  await assert.rejects(
+    () => execute(args("issues:apply", ["--approval-digest", plan.approval.digest]), { adapter }),
+    /Issues write permission/,
+  );
+  assert.equal(adapter.writes.length, 0);
+  assert.ok(!adapter.events.includes("listLabels"));
+});
+
+test("missing base revision stops before any write", async () => {
+  const adapter = new CliAdapter();
+  adapter.getCommit = async () => {
+    adapter.events.push("getCommit");
+    throw new Error("HTTP 404 base revision not found");
+  };
+  await assert.rejects(
+    () => execute(args("issues:apply", ["--approval-digest", plan.approval.digest]), { adapter }),
+    /base revision not found/,
+  );
+  assert.equal(adapter.writes.length, 0);
+  assert.ok(!adapter.events.includes("listIssues"));
+});
+
 test("preview is write-free and emits machine-readable JSON", async () => {
   const adapter = new CliAdapter();
   const output = [];

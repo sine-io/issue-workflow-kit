@@ -18,3 +18,5 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: npm run plan:validate -- --plan examples/issue-plan.example.json
+      - run: npm run plan:validate -- --plan .github/issue-plans/IWF-20260722.json
