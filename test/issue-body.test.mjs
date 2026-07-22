@@ -46,6 +46,14 @@ test("mergeManagedBody replaces only the managed block and preserves human text"
   assert.equal((merged.match(new RegExp(MANAGED_END, "g")) || []).length, 1);
 });
 
+test("managed body replacement is byte-stable when human text ends with newlines", () => {
+  const next = renderManagedBody(plan, records[1], refs, reverse);
+  const original = `${MANAGED_START}\nold\n${MANAGED_END}\n\nHuman notes\n\n\n`;
+  const first = mergeManagedBody(original, next);
+  const second = mergeManagedBody(first, next);
+  assert.equal(second, first);
+});
+
 test("a body without a managed block is retained after generated content", () => {
   const next = renderManagedBody(plan, records[1], refs, reverse);
   const merged = mergeManagedBody("Human-only note", next);

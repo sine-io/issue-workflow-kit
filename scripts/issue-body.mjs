@@ -105,5 +105,6 @@ export function mergeManagedBody(existingBody, managedBody) {
   const suffixStart = end + MANAGED_END.length;
   const prefix = existing.slice(0, start).replace(/\s+$/, "");
   const suffix = existing.slice(suffixStart).replace(/^\s+/, "");
-  return [prefix, managedBody, suffix].filter(Boolean).join("\n\n") + "\n";
+  const merged = [prefix, managedBody, suffix].filter(Boolean).join("\n\n");
+  return suffix ? merged : `${merged}\n`;
 }
