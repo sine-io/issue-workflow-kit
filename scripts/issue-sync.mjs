@@ -48,6 +48,10 @@ function issueRef(issue) {
   };
 }
 
+function nodeIdOf(ref) {
+  return ref?.nodeId || ref?.node_id || ref?.id;
+}
+
 function identitiesForPlan(issues, planId) {
   const byTaskId = new Map();
   for (const issue of issues) {
@@ -163,4 +167,87 @@ export async function syncIssues({ plan, repository, adapter, preview = false })
     issues: records.map((record) => outcomes.get(record.id)),
     refs,
   };
+}
+
+function refsForPlanIssues(issues, planId) {
+  const refs = new Map();
+  for (const issue of issues) {
+    const identity = parseIdentity(issue.body || "");
+    if (!identity || identity.planId !== planId) continue;
+    if (refs.has(identity.taskId)) throw new Error(`multiple Issues use identity ${planId}/${identity.taskId}`);
+    refs.set(identity.taskId, issueRef(issue));
+  }
+  return refs;
+}
+
+async function ensureRelationshipRefs(plan, repository, adapter, refs) {
+  const owned = refsForPlanIssues(await adapter.listIssues(repository), plan.plan.id);
+  for (const [id, ref] of refs || []) owned.set(id, ref);
+  const resolved = new Map();
+  for (const record of flattenPlan(plan, { validate: false })) {
+    const ref = owned.get(record.id);
+    if (!ref || !nodeIdOf(ref)) throw new Error(`Issue reference for ${record.id} is missing a GraphQL node ID`);
+    resolved.set(record.id, ref);
+  }
+  return { resolved, owned };
+}
+
+export async function syncRelationships({ plan, repository, adapter, refs, preview = false }) {
+  validatePlan(plan, { requireApproval: true });
+  const records = flattenPlan(plan, { validate: false });
+  const { resolved, owned } = await ensureRelationshipRefs(plan, repository, adapter, refs);
+  const planByNodeId = new Map([...owned.entries()].map(([id, ref]) => [nodeIdOf(ref), id]));
+  const operations = [];
+
+  const tasksByParent = new Map();
+  for (const record of records.filter((item) => item.kind === "task")) {
+    if (!tasksByParent.has(record.parentId)) tasksByParent.set(record.parentId, new Set());
+    tasksByParent.get(record.parentId).add(record.id);
+  }
+
+  for (const [parentId, parentRef] of owned) {
+    const parentNodeId = nodeIdOf(parentRef);
+    const current = await adapter.listSubIssues(parentNodeId);
+    const currentByNode = new Map(current.map((ref) => [nodeIdOf(ref), ref]));
+    const desiredIds = tasksByParent.get(parentId) || new Set();
+    for (const [childNodeId] of currentByNode) {
+      const childId = planByNodeId.get(childNodeId);
+      if (childId && !desiredIds.has(childId)) {
+        operations.push({ action: "remove-sub-issue", parentId, childId });
+        if (!preview) await adapter.removeSubIssue(parentNodeId, childNodeId);
+      }
+    }
+    for (const childId of desiredIds) {
+      const childNodeId = nodeIdOf(resolved.get(childId));
+      if (!currentByNode.has(childNodeId)) {
+        operations.push({ action: "add-sub-issue", parentId, childId });
+        if (!preview) await adapter.addSubIssue(parentNodeId, childNodeId);
+      }
+    }
+  }
+
+  const recordsById = new Map(records.map((record) => [record.id, record]));
+  for (const [issueId, issueRef] of owned) {
+    const task = recordsById.get(issueId);
+    const issueNodeId = nodeIdOf(issueRef);
+    const current = await adapter.listBlockedBy(issueNodeId);
+    const currentByNode = new Map(current.map((ref) => [nodeIdOf(ref), ref]));
+    const desiredIds = new Set(task?.kind === "task" ? task.dependsOn : []);
+    for (const [blockingNodeId] of currentByNode) {
+      const blockingId = planByNodeId.get(blockingNodeId);
+      if (blockingId && !desiredIds.has(blockingId)) {
+        operations.push({ action: "remove-dependency", issueId, blockingId });
+        if (!preview) await adapter.removeBlockedBy(issueNodeId, blockingNodeId);
+      }
+    }
+    for (const blockingId of desiredIds) {
+      const blockingNodeId = nodeIdOf(resolved.get(blockingId));
+      if (!currentByNode.has(blockingNodeId)) {
+        operations.push({ action: "add-dependency", issueId, blockingId });
+        if (!preview) await adapter.addBlockedBy(issueNodeId, blockingNodeId);
+      }
+    }
+  }
+
+  return { repository, planId: plan.plan.id, preview, operations, refs: resolved };
 }

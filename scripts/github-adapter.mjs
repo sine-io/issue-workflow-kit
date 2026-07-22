@@ -24,6 +24,14 @@ export class GitHubCommandError extends Error {
   }
 }
 
+export class GitHubGraphQLError extends Error {
+  constructor(errors) {
+    super(`GitHub GraphQL request failed: ${errors.map((error) => error.message || JSON.stringify(error)).join("; ")}`);
+    this.name = "GitHubGraphQLError";
+    this.errors = errors;
+  }
+}
+
 export class GitHubAdapter {
   constructor({
     runner = (args, options) => spawnSync("gh", args, options),
@@ -76,6 +84,71 @@ export class GitHubAdapter {
     } catch (error) {
       throw new Error(`GitHub REST API returned invalid JSON for ${method} ${endpoint}: ${error.message}`);
     }
+  }
+
+  graphql(query, variables = {}) {
+    const output = this.run(["api", "graphql", "--input", "-"], {
+      input: JSON.stringify({ query, variables }),
+    });
+    let result;
+    try {
+      result = JSON.parse(output);
+    } catch (error) {
+      throw new Error(`GitHub GraphQL API returned invalid JSON: ${error.message}`);
+    }
+    if (result.errors?.length) throw new GitHubGraphQLError(result.errors);
+    if (!result.data) throw new GitHubGraphQLError([{ message: "GraphQL response did not contain data" }]);
+    return result.data;
+  }
+
+  async listSubIssues(issueNodeId) {
+    return this.listIssueConnection(issueNodeId, "subIssues");
+  }
+
+  async listBlockedBy(issueNodeId) {
+    return this.listIssueConnection(issueNodeId, "blockedBy");
+  }
+
+  async listIssueConnection(issueNodeId, field) {
+    if (!["subIssues", "blockedBy"].includes(field)) throw new Error(`Unsupported Issue connection ${field}`);
+    const nodes = [];
+    let after = null;
+    do {
+      const query = `query($id: ID!, $after: String) { node(id: $id) { ... on Issue { ${field}(first: 100, after: $after) { nodes { id number url } pageInfo { hasNextPage endCursor } } } } }`;
+      const connection = this.graphql(query, { id: issueNodeId, after }).node?.[field];
+      if (!connection) throw new GitHubGraphQLError([{ message: `Issue ${issueNodeId} has no ${field} connection` }]);
+      nodes.push(...connection.nodes);
+      after = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
+    } while (after);
+    return nodes;
+  }
+
+  addSubIssue(issueNodeId, subIssueNodeId) {
+    return this.graphql(
+      "mutation($issueId: ID!, $subIssueId: ID!) { addSubIssue(input: { issueId: $issueId, subIssueId: $subIssueId, replaceParent: false }) { issue { id } subIssue { id } } }",
+      { issueId: issueNodeId, subIssueId: subIssueNodeId },
+    );
+  }
+
+  removeSubIssue(issueNodeId, subIssueNodeId) {
+    return this.graphql(
+      "mutation($issueId: ID!, $subIssueId: ID!) { removeSubIssue(input: { issueId: $issueId, subIssueId: $subIssueId }) { issue { id } subIssue { id } } }",
+      { issueId: issueNodeId, subIssueId: subIssueNodeId },
+    );
+  }
+
+  addBlockedBy(issueNodeId, blockingIssueNodeId) {
+    return this.graphql(
+      "mutation($issueId: ID!, $blockingIssueId: ID!) { addBlockedBy(input: { issueId: $issueId, blockingIssueId: $blockingIssueId }) { issue { id } blockingIssue { id } } }",
+      { issueId: issueNodeId, blockingIssueId: blockingIssueNodeId },
+    );
+  }
+
+  removeBlockedBy(issueNodeId, blockingIssueNodeId) {
+    return this.graphql(
+      "mutation($issueId: ID!, $blockingIssueId: ID!) { removeBlockedBy(input: { issueId: $issueId, blockingIssueId: $blockingIssueId }) { issue { id } blockingIssue { id } } }",
+      { issueId: issueNodeId, blockingIssueId: blockingIssueNodeId },
+    );
   }
 
   async listLabels(repository) {
