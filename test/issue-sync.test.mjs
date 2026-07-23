@@ -9,7 +9,7 @@ import { approvalDigest } from "../scripts/plan-validation.mjs";
 
 const plan = JSON.parse(fs.readFileSync(new URL("../.github/issue-plans/IWF-20260722.json", import.meta.url), "utf8"));
 const v11Plan = JSON.parse(fs.readFileSync(new URL("../examples/issue-plan.v1.1.example.json", import.meta.url), "utf8"));
-const repository = "sine-io/issue-project-workflow-template";
+const repository = "sine-io/issue-workflow-kit";
 
 function clone(value) {
   return structuredClone(value);
