@@ -24,7 +24,7 @@
       "title": "完成 Issue Workflow Kit 仓库标识迁移",
       "goal": "让所有活跃的仓库标识和使用入口指向新名称，并明确保留历史审计坐标。",
       "value": "使用者能够从新仓库坐标获取协议、安装依赖和运行测试，同时既有批准摘要继续有效。",
-      "context": "GitHub 仓库已由 sine-io/issue-project-workflow-template 重命名为 sine-io/issue-workflow-kit；当前 README、私有 npm 根包名和一个活跃测试夹具仍使用旧名称。",
+      "context": "GitHub 仓库已由 sine-io/issue-project-workflow-\u0074emplate 重命名为 sine-io/issue-workflow-kit；当前 README、私有 npm 根包名和一个活跃测试夹具仍使用旧名称。",
       "expectedBehavior": "活跃引用统一使用 issue-workflow-kit；两个历史批准计划保留旧仓库坐标且其批准摘要不变；CLI、schema、命令参数和运行协议不变。",
       "scope": [
         "更新 README 中的远程 WORKFLOW.md 地址并说明历史批准计划的坐标保留策略",
