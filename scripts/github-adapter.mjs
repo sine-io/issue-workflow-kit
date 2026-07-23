@@ -102,6 +102,10 @@ export class GitHubAdapter {
     return this.api("GET", `repos/${repository}/commits/${encodeURIComponent(revision)}`);
   }
 
+  getAssignee(repository, login) {
+    return this.api("GET", `repos/${repository}/assignees/${encodeURIComponent(login)}`);
+  }
+
   graphql(query, variables = {}) {
     const output = this.run(["api", "graphql", "--input", "-"], {
       input: JSON.stringify({ query, variables }),
@@ -204,4 +208,157 @@ export class GitHubAdapter {
   async updateIssue(repository, number, issue) {
     return this.api("PATCH", `repos/${repository}/issues/${number}`, issue);
   }
+
+  getIssue(repository, number) {
+    return this.api("GET", `repos/${repository}/issues/${encodeURIComponent(number)}`);
+  }
+
+  async listIssueComments(repository, number) {
+    const comments = [];
+    for (let page = 1; ; page += 1) {
+      const batch = this.api("GET", `repos/${repository}/issues/${encodeURIComponent(number)}/comments?per_page=100&page=${page}`);
+      comments.push(...batch);
+      if (batch.length < 100) return comments;
+    }
+  }
+
+  listComments(repository, number) {
+    return this.listIssueComments(repository, number);
+  }
+
+  createIssueComment(repository, number, body) {
+    return this.api("POST", `repos/${repository}/issues/${encodeURIComponent(number)}/comments`, { body });
+  }
+
+  createComment(repository, number, body) {
+    return this.createIssueComment(repository, number, body);
+  }
+
+  updateIssueComment(repository, commentId, body) {
+    return this.api("PATCH", `repos/${repository}/issues/comments/${encodeURIComponent(commentId)}`, { body });
+  }
+
+  updateComment(repository, commentId, body) {
+    return this.updateIssueComment(repository, commentId, body);
+  }
+
+  async listIssueTimeline(repository, number) {
+    const events = [];
+    for (let page = 1; ; page += 1) {
+      const batch = this.api("GET", `repos/${repository}/issues/${encodeURIComponent(number)}/timeline?per_page=100&page=${page}`);
+      events.push(...batch);
+      if (batch.length < 100) return events;
+    }
+  }
+
+  async listPullRequestClosingIssues(pullRequestNodeId) {
+    const issues = [];
+    let after = null;
+    do {
+      const query = "query($id: ID!, $after: String) { node(id: $id) { ... on PullRequest { closingIssuesReferences(first: 100, after: $after) { nodes { id number url repository { nameWithOwner } } pageInfo { hasNextPage endCursor } } } } }";
+      const connection = this.graphql(query, { id: pullRequestNodeId, after }).node?.closingIssuesReferences;
+      if (!connection) throw new GitHubGraphQLError([{ message: `Pull request ${pullRequestNodeId} has no closingIssuesReferences connection` }]);
+      issues.push(...connection.nodes);
+      after = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
+    } while (after);
+    return issues;
+  }
+
+  getPullRequest(repository, number) {
+    return this.api("GET", `repos/${repository}/pulls/${encodeURIComponent(number)}`);
+  }
+
+  getPR(repository, number) {
+    return this.getPullRequest(repository, number);
+  }
+
+  async listPullRequestFiles(repository, number) {
+    const files = [];
+    for (let page = 1; ; page += 1) {
+      const batch = this.api("GET", `repos/${repository}/pulls/${encodeURIComponent(number)}/files?per_page=100&page=${page}`);
+      files.push(...batch);
+      if (batch.length < 100) return files;
+    }
+  }
+
+  listPRFiles(repository, number) {
+    return this.listPullRequestFiles(repository, number);
+  }
+
+  async listCheckRuns(repository, ref) {
+    const runs = [];
+    for (let page = 1; ; page += 1) {
+      const result = this.api("GET", `repos/${repository}/commits/${encodeURIComponent(ref)}/check-runs?per_page=100&page=${page}`);
+      const batch = result.check_runs || [];
+      runs.push(...batch);
+      if (batch.length < 100) return runs;
+    }
+  }
+
+  async listCommitStatuses(repository, ref) {
+    const statuses = [];
+    for (let page = 1; ; page += 1) {
+      const batch = this.api("GET", `repos/${repository}/commits/${encodeURIComponent(ref)}/statuses?per_page=100&page=${page}`);
+      statuses.push(...batch);
+      if (batch.length < 100) return statuses;
+    }
+  }
+
+  async listCommitChecks(repository, ref) {
+    const [checkRuns, statuses] = await Promise.all([
+      this.listCheckRuns(repository, ref),
+      this.listCommitStatuses(repository, ref),
+    ]);
+    return normalizeCommitChecks(checkRuns, statuses);
+  }
+
+  getChecks(repository, ref) {
+    return this.listCommitChecks(repository, ref);
+  }
+}
+
+function checkRunState(run) {
+  if (run.status !== "completed") return "pending";
+  return run.conclusion === "success" ? "success" : "failure";
+}
+
+function commitStatusState(status) {
+  if (status.state === "success") return "success";
+  if (status.state === "pending") return "pending";
+  return "failure";
+}
+
+export function normalizeCommitChecks(checkRuns = [], statuses = []) {
+  const normalized = new Map();
+  for (const status of statuses) {
+    const name = status.context;
+    if (!name || normalized.has(name)) continue;
+    normalized.set(name, {
+      name,
+      state: commitStatusState(status),
+      source: "commit-status",
+      detailsUrl: status.target_url || null,
+    });
+  }
+  for (const run of checkRuns) {
+    const name = run.name;
+    if (!name || normalized.get(name)?.source.includes("check-run")) continue;
+    const candidate = {
+      name,
+      state: checkRunState(run),
+      source: "check-run",
+      detailsUrl: run.details_url || run.html_url || null,
+    };
+    const existing = normalized.get(name);
+    if (!existing) normalized.set(name, candidate);
+    else {
+      const rank = { success: 0, pending: 1, failure: 2 };
+      normalized.set(name, {
+        ...candidate,
+        state: rank[existing.state] > rank[candidate.state] ? existing.state : candidate.state,
+        source: "check-run+commit-status",
+      });
+    }
+  }
+  return [...normalized.values()].sort((left, right) => left.name.localeCompare(right.name));
 }

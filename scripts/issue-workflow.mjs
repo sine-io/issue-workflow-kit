@@ -49,8 +49,8 @@ function canWriteIssues(repository) {
     || ["WRITE", "MAINTAIN", "ADMIN"].includes(String(repository.viewerPermission || "").toUpperCase());
 }
 
-export async function preflight({ plan, repository, adapter, expectedDigest }) {
-  const validation = validatePlan(plan, { requireApproval: true });
+export async function preflight({ plan, repository, adapter, expectedDigest, sourcePath }) {
+  const validation = validatePlan(plan, { requireApproval: true, sourcePath });
   if (expectedDigest !== undefined && expectedDigest !== validation.digest) {
     throw new WorkflowCliError(`approval digest mismatch: expected ${validation.digest}, got ${expectedDigest}`);
   }
@@ -59,8 +59,8 @@ export async function preflight({ plan, repository, adapter, expectedDigest }) {
     throw new WorkflowCliError(`repository mismatch: plan targets ${plan.workflow.repository}, command targets ${repository}`);
   }
 
-  adapter.checkCli();
-  adapter.checkAuth();
+  await adapter.checkCli();
+  await adapter.checkAuth();
   const repositoryInfo = await adapter.getRepository(repository);
   const actualName = repositoryInfo.nameWithOwner || `${repositoryInfo.owner?.login || repositoryInfo.owner?.name || ""}/${repositoryInfo.name}`;
   if (actualName && actualName.toLowerCase() !== repository.toLowerCase()) {
@@ -96,7 +96,7 @@ export async function execute(argv, { adapter = new GitHubAdapter(), write = (va
   const options = parseArgs(argv);
   const plan = readPlan(path.resolve(options.plan));
   if (options.command === "plan:validate") {
-    const validation = validatePlan(plan);
+    const validation = validatePlan(plan, { sourcePath: options.plan });
     const result = {
       valid: true,
       planId: plan.plan.id,
@@ -115,6 +115,7 @@ export async function execute(argv, { adapter = new GitHubAdapter(), write = (va
     repository: options.repo,
     adapter,
     expectedDigest: options.approvalDigest,
+    sourcePath: options.plan,
   });
   const issueResult = await syncIssues({ plan, repository: options.repo, adapter, preview });
   let relationshipResult;

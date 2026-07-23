@@ -5,8 +5,10 @@ import test from "node:test";
 import { GitHubAdapter, GitHubGraphQLError } from "../scripts/github-adapter.mjs";
 import { flattenPlan } from "../scripts/plan-domain.mjs";
 import { syncIssues, syncRelationships } from "../scripts/issue-sync.mjs";
+import { approvalDigest } from "../scripts/plan-validation.mjs";
 
 const plan = JSON.parse(fs.readFileSync(new URL("../.github/issue-plans/IWF-20260722.json", import.meta.url), "utf8"));
+const v11Plan = JSON.parse(fs.readFileSync(new URL("../examples/issue-plan.v1.1.example.json", import.meta.url), "utf8"));
 const repository = "sine-io/issue-project-workflow-template";
 
 function clone(value) {
@@ -42,6 +44,11 @@ class FakeAdapter {
 
   async listIssues() {
     return clone([...this.issues.values()]);
+  }
+
+  async getAssignee(_repository, login) {
+    this.writes.push({ action: "checkAssignee", login });
+    return { login };
   }
 
   async createIssue(_repository, input) {
@@ -82,7 +89,7 @@ test("first apply creates one Issue per stable plan identity and fixed labels", 
   const result = await sync(adapter);
   assert.equal(result.issues.length, 9);
   assert.equal(adapter.issues.size, 9);
-  assert.equal(adapter.labels.size, 9);
+  assert.equal(adapter.labels.size, 10);
   assert.equal(adapter.writes.filter((write) => write.action === "createIssue").length, 9);
   for (const issue of adapter.issues.values()) {
     assert.match(issue.body, /issue-workflow:\{"planId":"IWF-20260722"/);
@@ -138,7 +145,7 @@ test("preview reports creates and updates without any adapter write", async () =
   assert.equal(adapter.labels.size, 0);
   assert.equal(adapter.writes.length, 0);
   assert.equal(result.preview, true);
-  assert.equal(result.operations.filter((operation) => operation.action === "create").length, 18);
+  assert.equal(result.operations.filter((operation) => operation.action === "create").length, 19);
 });
 
 test("duplicate stable identities fail instead of guessing", async () => {
@@ -150,6 +157,32 @@ test("duplicate stable identities fail instead of guessing", async () => {
   duplicate.node_id = `node-${duplicate.number}`;
   adapter.issues.set(duplicate.number, duplicate);
   await assert.rejects(() => sync(adapter), /multiple Issues use identity/);
+});
+
+test("v1.1 metadata renders, syncs managed labels, and preserves assignees", async () => {
+  const approved = clone(v11Plan);
+  approved.approval = {
+    status: "approved",
+    digest: approvalDigest(approved),
+    approvedAt: "2026-07-23T00:00:00Z",
+    approvedBy: "reviewer",
+  };
+  const adapter = new FakeAdapter();
+  const result = await syncIssues({ plan: approved, repository, adapter });
+  assert.equal(result.issues.length, 2);
+  assert.ok(adapter.labels.has("tag:example"));
+  assert.ok(adapter.labels.has("cycle:2026-w52"));
+  const issue = [...adapter.issues.values()][0];
+  assert.match(issue.body, /## Management/);
+  assert.match(issue.body, /Owner: `octocat`/);
+  assert.deepEqual(issue.assignees, ["octocat"]);
+  assert.ok(adapter.writes.some((write) => write.action === "checkAssignee"));
+
+  issue.assignees.push("human-owner");
+  adapter.writes = [];
+  await syncIssues({ plan: approved, repository, adapter });
+  assert.deepEqual(issue.assignees.sort(), ["human-owner", "octocat"]);
+  assert.equal(adapter.writes.filter((write) => write.action === "checkAssignee").length, 1);
 });
 
 test("GitHub adapter paginates REST lists and retries transient failures", async () => {

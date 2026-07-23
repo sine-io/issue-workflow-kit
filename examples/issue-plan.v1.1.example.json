@@ -1,0 +1,87 @@
+{
+  "$schema": "../.github/issue-plan.v1.1.schema.json",
+  "schemaVersion": "1.1",
+  "workflow": {
+    "repository": "example/acme-service",
+    "revision": "main"
+  },
+  "plan": {
+    "id": "DEMO-20260723",
+    "title": "Example v1.1 delivery plan",
+    "goal": "Demonstrate optional PM and execution metadata.",
+    "language": "en-US",
+    "baseRevision": "711e137"
+  },
+  "approval": {
+    "status": "draft",
+    "digest": null,
+    "approvedAt": null,
+    "approvedBy": null
+  },
+  "epics": [
+    {
+      "id": "DEMO-20260723-E01",
+      "title": "Example v1.1 delivery",
+      "goal": "Deliver one independently verifiable example.",
+      "value": "Consumers can copy a plan with optional metadata.",
+      "context": "The example remains offline and has no remote side effects.",
+      "expectedBehavior": "Validation accepts the explicit execution contract.",
+      "scope": ["Validate the v1.1 example JSON"],
+      "allowedPaths": ["examples/issue-plan.v1.1.example.json"],
+      "outOfScope": ["Changing a target repository"],
+      "priority": "P1",
+      "dependsOn": [],
+      "acceptanceCriteria": ["The example passes v1.1 schema and semantic validation."],
+      "verificationSteps": ["npm run plan:validate -- --plan examples/issue-plan.v1.1.example.json"],
+      "management": {
+        "owner": "octocat",
+        "estimateHours": 2,
+        "dueDate": "2026-12-31",
+        "cycle": "2026-w52",
+        "tags": ["example", "contract"]
+      },
+      "execution": {
+        "agent": "example-agent",
+        "commitPolicy": "required",
+        "allowedSideEffects": ["github:issues:write"],
+        "maxRuntimeSeconds": 7200,
+        "maxAttempts": 1,
+        "heartbeatIntervalSeconds": 300,
+        "requiredChecks": ["test"]
+      },
+      "tasks": [
+        {
+          "id": "DEMO-20260723-T01",
+          "title": "Validate the v1.1 example",
+          "goal": "Prove the v1.1 example is structurally complete.",
+          "value": "A new plan author has a copyable metadata example.",
+          "context": "The repository publishes a strict versioned contract.",
+          "expectedBehavior": "Validation reports success without contacting GitHub.",
+          "scope": ["Run local v1.1 schema and semantic validation"],
+          "allowedPaths": ["examples/issue-plan.v1.1.example.json"],
+          "outOfScope": ["Creating Issues or labels"],
+          "priority": "P1",
+          "dependsOn": [],
+          "acceptanceCriteria": ["The example is accepted by the v1.1 validator."],
+          "verificationSteps": ["npm run plan:validate -- --plan examples/issue-plan.v1.1.example.json"],
+          "management": {
+            "owner": "octocat",
+            "estimateHours": 1,
+            "dueDate": "2026-12-31",
+            "cycle": "2026-w52",
+            "tags": ["example"]
+          },
+          "execution": {
+            "agent": "example-agent",
+            "commitPolicy": "required",
+            "allowedSideEffects": ["github:issues:write"],
+            "maxRuntimeSeconds": 7200,
+            "maxAttempts": 1,
+            "heartbeatIntervalSeconds": 300,
+            "requiredChecks": ["test"]
+          }
+        }
+      ]
+    }
+  ]
+}

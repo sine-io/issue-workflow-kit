@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sine.io/issue-workflow-kit/task-completion.schema.json",
+  "title": "Issue Workflow Kit task-completion/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "planId", "taskId", "issueNumber", "attemptId", "envelopeDigest",
+    "result", "acceptance", "verification", "artifacts"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "task-completion/v1" },
+    "planId": { "type": "string", "pattern": "^[A-Z][A-Z0-9_-]*$" },
+    "taskId": { "type": "string", "pattern": "^[A-Z][A-Z0-9_-]*$" },
+    "issueNumber": { "type": "integer", "minimum": 1 },
+    "attemptId": { "type": "string", "pattern": "^[A-Z][A-Z0-9_-]*-A[0-9]{2,}$" },
+    "envelopeDigest": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+    "result": { "enum": ["success", "partial", "failed"] },
+    "acceptance": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/evidence" }
+    },
+    "verification": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/evidence" }
+    },
+    "artifacts": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/artifact" }
+    },
+    "note": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "evidence"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Z][A-Z0-9_-]*-(?:AC|V)[0-9]{2,}$" },
+        "status": { "enum": ["success", "failed", "skipped", "pending"] },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1, "maxLength": 2000 }
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "summary"],
+      "properties": {
+        "url": { "type": "string", "format": "uri", "minLength": 1 },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }
+      }
+    }
+  }
+}

@@ -7,10 +7,22 @@ import process from "node:process";
 
 import Ajv2020 from "ajv/dist/2020.js";
 
-const schemaUrl = new URL("../.github/issue-plan.schema.json", import.meta.url);
-const schema = JSON.parse(fs.readFileSync(schemaUrl, "utf8"));
+const schemaUrls = {
+  "1.0": new URL("../.github/issue-plan.schema.json", import.meta.url),
+  "1.1": new URL("../.github/issue-plan.v1.1.schema.json", import.meta.url),
+};
+const schemas = Object.fromEntries(
+  Object.entries(schemaUrls).map(([version, url]) => [version, JSON.parse(fs.readFileSync(url, "utf8"))]),
+);
 const ajv = new Ajv2020({ allErrors: true, strict: true });
-const validateSchema = ajv.compile(schema);
+const schemaValidators = Object.fromEntries(
+  Object.entries(schemas).map(([version, schema]) => [version, ajv.compile(schema)]),
+);
+
+const expectedSchemaFile = {
+  "1.0": "issue-plan.schema.json",
+  "1.1": "issue-plan.v1.1.schema.json",
+};
 
 export function canonicalize(value) {
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -35,7 +47,68 @@ export function approvalDigest(plan) {
     .digest("hex");
 }
 
-function semanticErrors(plan) {
+function schemaVersionOf(plan) {
+  const version = plan && typeof plan === "object" ? plan.schemaVersion : undefined;
+  if (!Object.hasOwn(schemaValidators, version)) {
+    throw new Error(`unsupported schemaVersion ${version ?? "<missing>"}`);
+  }
+  return version;
+}
+
+function schemaPathErrors(plan, version, sourcePath) {
+  const errors = [];
+  const declared = String(plan.$schema || "");
+  const declaredFile = path.posix.basename(declared.split(/[?#]/, 1)[0]);
+  if (declaredFile !== expectedSchemaFile[version]) {
+    errors.push(`schema path must reference ${expectedSchemaFile[version]} for schemaVersion ${version}`);
+    return errors;
+  }
+  if (declared.startsWith("http://") || declared.startsWith("https://")) {
+    if (declared !== schemas[version].$id) errors.push(`schema URL must be ${schemas[version].$id}`);
+  } else if (sourcePath) {
+    const resolved = path.resolve(path.dirname(path.resolve(sourcePath)), declared);
+    const expected = path.resolve(new URL(`../.github/${expectedSchemaFile[version]}`, import.meta.url).pathname);
+    if (resolved !== expected) errors.push(`schema path does not resolve to ${expectedSchemaFile[version]}`);
+  } else {
+    const known = new Set([`../${expectedSchemaFile[version]}`, `../.github/${expectedSchemaFile[version]}`]);
+    if (!known.has(declared)) errors.push(`schema path must be a repository-relative reference to ${expectedSchemaFile[version]}`);
+  }
+  return errors;
+}
+
+function validCalendarDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function v11SemanticErrors(plan) {
+  const errors = [];
+  for (const record of plan.epics.flatMap((epic) => [epic, ...epic.tasks])) {
+    const management = record.management;
+    if (management?.dueDate && !validCalendarDate(management.dueDate)) {
+      errors.push(`${record.id} has an invalid dueDate ${management.dueDate}`);
+    }
+    if (management?.estimateHours !== undefined && !Number.isFinite(management.estimateHours)) {
+      errors.push(`${record.id} estimateHours must be finite`);
+    }
+    const execution = record.execution;
+    if (!execution) continue;
+    if (!execution.agent.trim()) errors.push(`${record.id} execution.agent cannot be blank`);
+    if (execution.heartbeatIntervalSeconds > execution.maxRuntimeSeconds) {
+      errors.push(`${record.id} heartbeatIntervalSeconds cannot exceed maxRuntimeSeconds`);
+    }
+    if (execution.allowedSideEffects.some((sideEffect) => !sideEffect.trim())) {
+      errors.push(`${record.id} allowedSideEffects cannot contain blank values`);
+    }
+    if (execution.requiredChecks.some((check) => !check.trim())) {
+      errors.push(`${record.id} requiredChecks cannot contain blank values`);
+    }
+  }
+  return errors;
+}
+
+function semanticErrors(plan, version) {
   const errors = [];
   const ids = new Map();
   const epics = new Set();
@@ -86,6 +159,8 @@ function semanticErrors(plan) {
   }
   for (const id of graph.keys()) visit(id);
 
+  if (version === "1.1") errors.push(...v11SemanticErrors(plan));
+
   const computed = approvalDigest(plan);
   if (plan.approval.status === "draft") {
     if (plan.approval.digest !== null) errors.push("draft approval.digest must be null");
@@ -101,13 +176,18 @@ function semanticErrors(plan) {
   return { errors, computed };
 }
 
-export function validatePlan(plan, { requireApproval = false } = {}) {
+export function validatePlan(plan, { requireApproval = false, sourcePath } = {}) {
+  const version = schemaVersionOf(plan);
+  const validateSchema = schemaValidators[version];
   if (!validateSchema(plan)) {
     const details = (validateSchema.errors || [])
       .map((error) => `${error.instancePath || "/"} ${error.message}`);
     throw new Error(`schema validation failed: ${details.join("; ")}`);
   }
-  const { errors, computed } = semanticErrors(plan);
+  const errors = schemaPathErrors(plan, version, sourcePath);
+  const semantic = semanticErrors(plan, version);
+  errors.push(...semantic.errors);
+  const computed = semantic.computed;
   if (requireApproval && plan.approval.status !== "approved") {
     errors.push("plan approval.status must be approved");
   }
@@ -133,7 +213,7 @@ if (path.resolve(process.argv[1] || "") === path.resolve(new URL(import.meta.url
   try {
     const options = parseArgs(process.argv.slice(2));
     const plan = readPlan(options.plan);
-    const result = validatePlan(plan);
+    const result = validatePlan(plan, { sourcePath: options.plan });
     const tasks = plan.epics.reduce((count, epic) => count + epic.tasks.length, 0);
     console.log(JSON.stringify({
       valid: true,

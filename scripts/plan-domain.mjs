@@ -4,6 +4,7 @@ export const STATUS_LABELS = [
   "status:backlog",
   "status:ready",
   "status:in-progress",
+  "status:blocked",
   "status:in-review",
 ];
 
@@ -83,11 +84,23 @@ export function parseIdentity(body) {
 }
 
 function managedLabelFamily(label) {
-  return /^(?:type|priority|status):/.test(label);
+  return /^(?:type|priority|status|tag|cycle):/.test(label);
+}
+
+export function managementLabels(record) {
+  const management = record.management || {};
+  const tags = (management.tags || []).map((tag) => `tag:${tag}`);
+  const cycle = management.cycle ? [`cycle:${management.cycle}`] : [];
+  return [...tags, ...cycle];
 }
 
 export function labelsForNew(record) {
-  return [`type:${record.kind}`, `priority:${record.priority}`, deriveInitialStatus(record)];
+  return [
+    `type:${record.kind}`,
+    `priority:${record.priority}`,
+    deriveInitialStatus(record),
+    ...managementLabels(record),
+  ];
 }
 
 export function labelsForExisting(record, currentLabels) {
@@ -98,5 +111,6 @@ export function labelsForExisting(record, currentLabels) {
     `type:${record.kind}`,
     `priority:${record.priority}`,
     ...(currentStatus.length ? currentStatus : [deriveInitialStatus(record)]),
+    ...managementLabels(record),
   ])];
 }

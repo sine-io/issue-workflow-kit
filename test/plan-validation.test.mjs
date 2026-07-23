@@ -9,11 +9,49 @@ import {
 } from "../scripts/plan-validation.mjs";
 
 const example = JSON.parse(fs.readFileSync(new URL("../examples/issue-plan.example.json", import.meta.url), "utf8"));
+const v11Example = JSON.parse(fs.readFileSync(new URL("../examples/issue-plan.v1.1.example.json", import.meta.url), "utf8"));
 
 test("valid example passes strict schema and semantic validation", () => {
   const result = validatePlan(example);
   assert.equal(result.plan.plan.id, "DEMO-20260722");
   assert.equal(result.digest, approvalDigest(example));
+});
+
+test("v1.1 example dispatches to the versioned schema", () => {
+  const result = validatePlan(v11Example);
+  assert.equal(result.plan.schemaVersion, "1.1");
+  assert.equal(result.plan.epics[0].execution.commitPolicy, "required");
+  assert.equal(result.digest, approvalDigest(v11Example));
+});
+
+test("v1.1 rejects invalid metadata, execution policy, dates, and schema paths", () => {
+  const invalidDate = structuredClone(v11Example);
+  invalidDate.epics[0].management.dueDate = "2026-02-30";
+  assert.throws(() => validatePlan(invalidDate), /invalid dueDate/);
+
+  const unknown = structuredClone(v11Example);
+  unknown.epics[0].management.unknown = true;
+  assert.throws(() => validatePlan(unknown), /additional propert/i);
+
+  const unknownTask = structuredClone(v11Example);
+  unknownTask.epics[0].tasks[0].unknown = true;
+  assert.throws(() => validatePlan(unknownTask), /unevaluated propert/i);
+
+  const policy = structuredClone(v11Example);
+  policy.epics[0].execution.commitPolicy = "optional";
+  assert.throws(() => validatePlan(policy), /must be equal to constant/);
+
+  const checks = structuredClone(v11Example);
+  checks.epics[0].execution.requiredChecks = [];
+  assert.throws(() => validatePlan(checks), /fewer than 1 items/);
+
+  const pathMismatch = structuredClone(v11Example);
+  pathMismatch.$schema = "../.github/issue-plan.schema.json";
+  assert.throws(() => validatePlan(pathMismatch), /schema path/);
+
+  const untrustedSchema = structuredClone(v11Example);
+  untrustedSchema.$schema = "https://example.test/issue-plan.v1.1.schema.json";
+  assert.throws(() => validatePlan(untrustedSchema), /schema URL/);
 });
 
 test("canonicalization sorts object keys but preserves array order", () => {
@@ -67,4 +105,13 @@ test("approved content must carry the exact digest", () => {
 test("the repository's approved implementation plan is valid", () => {
   const plan = JSON.parse(fs.readFileSync(new URL("../.github/issue-plans/IWF-20260722.json", import.meta.url), "utf8"));
   assert.doesNotThrow(() => validatePlan(plan, { requireApproval: true }));
+});
+
+test("the repository's approved v1.0 runtime launch plan remains valid", () => {
+  const plan = JSON.parse(fs.readFileSync(new URL("../.github/issue-plans/IWF-20260723.json", import.meta.url), "utf8"));
+  const result = validatePlan(plan, { requireApproval: true });
+  assert.equal(result.plan.schemaVersion, "1.0");
+  assert.equal(result.plan.approval.status, "approved");
+  assert.equal(result.plan.approval.digest, "5e0c07c1ba6728857bcd734d8ad539548d63c70e277806d8b3a4d8cc4c725374");
+  assert.equal(result.plan.epics[0].tasks.length, 9);
 });

@@ -1,0 +1,436 @@
+{
+  "$schema": "../issue-plan.schema.json",
+  "schemaVersion": "1.0",
+  "workflow": {
+    "repository": "sine-io/issue-project-workflow-template",
+    "revision": "5b05baf181c3913c84a12573229be9b9ee8b1569"
+  },
+  "plan": {
+    "id": "IWF-20260723",
+    "title": "任务运行态、证据链与看板元数据增强计划",
+    "goal": "在保持现有 v1.0 批准计划、allowedPaths 和 GitHub 原生关系兼容的前提下，增加可审计的任务运行态、完成证据和 Issues-only 看板元数据。",
+    "language": "zh-CN",
+    "baseRevision": "5b05baf181c3913c84a12573229be9b9ee8b1569"
+  },
+  "approval": {
+    "status": "approved",
+    "digest": "5e0c07c1ba6728857bcd734d8ad539548d63c70e277806d8b3a4d8cc4c725374",
+    "approvedAt": "2026-07-23T07:20:42Z",
+    "approvedBy": "kisscelia"
+  },
+  "epics": [
+    {
+      "id": "IWF-20260723-E01",
+      "title": "增强任务运行态、证据链与 Issues-only 看板元数据",
+      "goal": "交付兼容 v1.0 的 v1.1 计划契约、任务 attempt 生命周期 CLI、完成证据门禁和可选 PM 元数据同步。",
+      "value": "智能体和维护者可以仅依赖 GitHub Issues 与 Pull Requests 领取任务、报告进度、提交证据并可靠解锁依赖，同时保留人工管理信息。",
+      "context": "现有工作流能够验证批准计划并同步 Issue、Sub-issue 和依赖，但执行过程仍依赖人工约定，缺少机器可验证的 attempt、heartbeat、PR 范围、检查结果和完成证据。",
+      "expectedBehavior": "v1.0 计划继续原样有效；v1.1 计划可声明 PM 与执行元数据，并由幂等 CLI 通过受管评论和标签驱动 claim、heartbeat、block、resume、submit 与 reconcile。",
+      "scope": [
+        "新增向后兼容的 v1.1 计划契约与 Issues-only PM 元数据同步",
+        "新增执行信封、完成结果、attempt 评论协议和任务生命周期 CLI",
+        "新增 PR 范围、必需检查、关闭引用、过期处理和依赖解锁门禁"
+      ],
+      "allowedPaths": [
+        "WORKFLOW.md",
+        "README.md",
+        ".github/issue-plan.v1.1.schema.json",
+        ".github/task-execution.schema.json",
+        ".github/task-completion.schema.json",
+        ".github/workflows/test.yml",
+        "examples/**",
+        "scripts/**",
+        "test/**",
+        "package.json"
+      ],
+      "outOfScope": [
+        "建设常驻 dispatcher、独立 Web UI 或 GitHub Projects 集成",
+        "实现自动重试、OS 级进程或网络沙箱",
+        "提供二进制附件上传或完整日志托管服务"
+      ],
+      "priority": "P0",
+      "dependsOn": [],
+      "acceptanceCriteria": [
+        "九个顺序任务分别通过一个带关闭引用的 squash PR 完成",
+        "现有 v1.0 schema、示例、批准计划、摘要和原生关系行为保持有效",
+        "任务只能在有效 attempt、完整证据、合规 PR、成功检查和正确关闭引用同时成立时完成并解锁后继任务"
+      ],
+      "verificationSteps": [
+        "npm test",
+        "npm run plan:validate -- --plan examples/issue-plan.example.json",
+        "npm run plan:validate -- --plan examples/issue-plan.v1.1.example.json",
+        "npm run plan:validate -- --plan .github/issue-plans/IWF-20260722.json"
+      ],
+      "tasks": [
+        {
+          "id": "IWF-20260723-T01",
+          "title": "新增 v1.1 计划契约与版本分派",
+          "goal": "新增独立的 Issue Plan v1.1 schema 和示例，并让 validator 按 schemaVersion 选择且核对声明的 schema。",
+          "value": "新计划可以声明管理和执行契约，同时既有 v1.0 计划及其批准摘要不发生变化。",
+          "context": "当前 validator 固定加载单一 v1.0 schema；直接修改该 schema 会改变既有批准计划的契约并破坏兼容边界。",
+          "expectedBehavior": "validator 只接受受支持的 schemaVersion 与对应 $schema 路径组合；v1.0 继续使用原 schema，v1.1 严格校验可选 management 和 execution。",
+          "scope": [
+            "新增版本化 v1.1 schema 与可复制示例，不修改 v1.0 schema 和已批准计划",
+            "为 Epic 和 Task 增加可选 management，包含 owner、estimateHours、dueDate、cycle 和 tags",
+            "为 Epic 和 Task 增加可选 execution，包含 agent、固定为 required 的 commitPolicy、allowedSideEffects、maxRuntimeSeconds、maxAttempts、heartbeatIntervalSeconds 和非空 requiredChecks",
+            "为运行上限 7200 秒、heartbeat 300 秒和最多 1 个 attempt 建立建议默认值，并要求重试能力由批准计划显式提高 maxAttempts",
+            "按 schemaVersion 分派 validator 并校验计划声明的 schema 路径"
+          ],
+          "allowedPaths": [
+            ".github/issue-plan.v1.1.schema.json",
+            "examples/issue-plan.v1.1.example.json",
+            "scripts/plan-validation.mjs",
+            "test/plan-validation.test.mjs"
+          ],
+          "outOfScope": [
+            "修改 .github/issue-plan.schema.json 或任何现有批准计划",
+            "实现 PM 元数据同步或任务运行态命令"
+          ],
+          "priority": "P0",
+          "dependsOn": [],
+          "acceptanceCriteria": [
+            "v1.0 示例、v1.1 示例和所有现有批准计划均通过对应 schema 与语义校验",
+            "不支持的版本、错误 schema 路径、未知字段和非法 management 或 execution 均失败",
+            "非法日期、非正估算、空 requiredChecks、非法 commitPolicy 和无效运行限制均失败",
+            "现有 v1.0 批准计划的规范化摘要保持不变"
+          ],
+          "verificationSteps": [
+            "node --test test/plan-validation.test.mjs",
+            "npm run plan:validate -- --plan examples/issue-plan.example.json",
+            "npm run plan:validate -- --plan examples/issue-plan.v1.1.example.json",
+            "npm run plan:validate -- --plan .github/issue-plans/IWF-20260722.json"
+          ]
+        },
+        {
+          "id": "IWF-20260723-T02",
+          "title": "渲染并同步可选 PM 元数据",
+          "goal": "把 v1.1 management 字段确定性渲染到 Issue，并通过现有同步器安全维护 assignee 与标签。",
+          "value": "团队无需 GitHub Projects 即可在 Issues 中查看 owner、估算、截止日期、周期和标签，并保留人工管理状态。",
+          "context": "当前 Issue 正文和预览只呈现交付边界，adapter 不验证 assignee 可分配性，也不区分 PM 受管标签与人工标签。",
+          "expectedBehavior": "正文和 preview 显示声明的 PM 元数据；owner 可分配时只追加为 assignee，tag:<slug> 与 cycle:<slug> 按计划同步，所有人工 assignee 和其他标签均保留。",
+          "scope": [
+            "在 Epic 和 Task 受管正文中渲染 Owner、Estimate、Due date、Cycle 和 Tags，并在 preview 中输出对应差异",
+            "写入 owner 前读取并验证目标账号对仓库 Issue 的可分配性，只添加而不移除人工 assignee",
+            "将 tag:<slug> 和 cycle:<slug> 作为受管标签同步并保留类型、优先级、状态和其他人工标签",
+            "估算和截止日期仅写入受管 Issue 正文，不引入 Projects 字段"
+          ],
+          "allowedPaths": [
+            "scripts/plan-domain.mjs",
+            "scripts/issue-body.mjs",
+            "scripts/issue-sync.mjs",
+            "scripts/github-adapter.mjs",
+            "test/plan-domain.test.mjs",
+            "test/issue-body.test.mjs",
+            "test/issue-sync.test.mjs"
+          ],
+          "outOfScope": [
+            "创建或同步 GitHub Projects",
+            "移除未由当前计划管理的 assignee 或标签",
+            "实现 execution 字段或 attempt 生命周期"
+          ],
+          "priority": "P0",
+          "dependsOn": [
+            "IWF-20260723-T01"
+          ],
+          "acceptanceCriteria": [
+            "未声明 management 的 v1.0 与 v1.1 Issue 正文保持现有稳定输出",
+            "声明的 Owner、Estimate、Due date、Cycle 和 Tags 在正文与 preview 中准确呈现",
+            "不可分配 owner 在任何写入前失败，可分配 owner 被追加且人工 assignee 得到保留",
+            "受管 tag: 与 cycle: 标签可增删同步，所有非受管标签得到保留"
+          ],
+          "verificationSteps": [
+            "node --test test/plan-domain.test.mjs test/issue-body.test.mjs test/issue-sync.test.mjs",
+            "npm test"
+          ]
+        },
+        {
+          "id": "IWF-20260723-T03",
+          "title": "定义执行信封与完成结果契约",
+          "goal": "定义 task-execution/v1 与 task-completion/v1 schema、规范化摘要和纯领域状态模型。",
+          "value": "每次任务领取和提交都具备可验证、可关联且不可静默篡改的最小证据链。",
+          "context": "现有计划只保存字符串形式的验收与验证项，没有 attempt 身份、运行 ID、信封摘要、完成结果或受管评论协议。",
+          "expectedBehavior": "claim 可从批准计划派生确定性 execution envelope，completion result 必须与 task、attempt 和 envelope digest 一致，评论 marker 可稳定解析且不接受不完整证据。",
+          "scope": [
+            "新增 task-execution/v1 schema，记录 plan、task、issue、approval digest、attempt、agent、branch、允许范围、策略、验收项和验证项",
+            "新增 task-completion/v1 schema，记录结果、验收与验证证据、artifact URL、摘要和可选 SHA-256",
+            "按 <taskId>-AC01 和 <taskId>-V01 为现有字符串数组派生稳定运行 ID",
+            "复用递归键排序规范化 JSON 算法为 envelope 和 completion result 计算 SHA-256",
+            "定义 attempt 状态评论、不可变事件评论的稳定 marker、受管 JSON 和纯领域状态转换"
+          ],
+          "allowedPaths": [
+            ".github/task-execution.schema.json",
+            ".github/task-completion.schema.json",
+            "scripts/runtime-domain.mjs",
+            "scripts/runtime-validation.mjs",
+            "test/runtime-domain.test.mjs",
+            "test/runtime-validation.test.mjs"
+          ],
+          "outOfScope": [
+            "调用 GitHub API 或修改 Issue 状态",
+            "在评论中保存本地绝对路径、密钥、完整日志或二进制附件",
+            "提供 artifact 上传或进程、文件系统、网络沙箱"
+          ],
+          "priority": "P0",
+          "dependsOn": [
+            "IWF-20260723-T02"
+          ],
+          "acceptanceCriteria": [
+            "相同输入生成 byte-stable envelope、completion result、运行 ID 和 SHA-256",
+            "未知字段、摘要篡改、跨 task 或 attempt 引用、缺失证据、重复 ID 和非法路径均被拒绝",
+            "artifact 只接受 URL、非空摘要和可选 SHA-256，受管评论不接受敏感或本地路径字段",
+            "状态模型覆盖 backlog、ready、in-progress、blocked、in-review 和 closed 的合法转换"
+          ],
+          "verificationSteps": [
+            "node --test test/runtime-domain.test.mjs test/runtime-validation.test.mjs"
+          ]
+        },
+        {
+          "id": "IWF-20260723-T04",
+          "title": "扩展 GitHub 运行态适配器",
+          "goal": "为任务运行态增加分页评论、Issue、PR、文件和检查证据的可注入 GitHub adapter 能力。",
+          "value": "生命周期领域逻辑可以基于权威 GitHub 状态决策，同时保持离线可测和统一失败语义。",
+          "context": "现有 adapter 聚焦计划同步，只覆盖标签、Issue 列表和原生关系，无法读取或维护 attempt 评论及 PR 完成证据。",
+          "expectedBehavior": "adapter 分页读取全部相关数据，支持创建和更新评论，并合并 check runs 与 commit statuses；任一读取失败都会明确退出且不会发生后续写入。",
+          "scope": [
+            "分页读取 Issue 评论并支持创建和更新单条评论",
+            "读取单个 Issue、Pull Request、PR files、check runs 和 commit statuses",
+            "把 check runs 与 commit statuses 归一化为可判定 pending、success 和 failure 的检查集合",
+            "沿用现有 REST、GraphQL、分页、限流和瞬时错误的有界重试策略"
+          ],
+          "allowedPaths": [
+            "scripts/github-adapter.mjs",
+            "test/github-adapter.test.mjs"
+          ],
+          "outOfScope": [
+            "实现 attempt 状态机或业务门禁",
+            "上传日志、附件或 artifact",
+            "在读取失败后执行猜测性写入"
+          ],
+          "priority": "P0",
+          "dependsOn": [
+            "IWF-20260723-T03"
+          ],
+          "acceptanceCriteria": [
+            "Issue 评论、PR files、check runs 和 commit statuses 的多页结果完整且无重复",
+            "评论创建和更新调用返回可供幂等重读的稳定身份",
+            "check run 与同名 commit status 可按明确定义的优先级归一化",
+            "REST、GraphQL、分页或重试耗尽错误会停止操作，且读取失败后写入计数为零"
+          ],
+          "verificationSteps": [
+            "node --test test/github-adapter.test.mjs",
+            "npm test"
+          ]
+        },
+        {
+          "id": "IWF-20260723-T05",
+          "title": "实现 attempt 评论存储与领取状态机",
+          "goal": "实现 claim、heartbeat、block 和 resume 的幂等 attempt 评论协议与 Issue 状态迁移。",
+          "value": "同一任务在任一时刻只有一个有效执行者，进度、阻塞和恢复均可从 GitHub 审计并安全重放。",
+          "context": "当前执行模式只要求人工切换标签，没有 active attempt、heartbeat、并发领取裁决、阻塞原因或最大 attempt 限制。",
+          "expectedBehavior": "只有 open、ready、依赖已关闭且没有 active attempt 的 Task 可领取；heartbeat 只更新当前 attempt 状态评论，block 与 resume 记录事件并维护唯一状态标签。",
+          "scope": [
+            "实现 claim 并从批准计划生成 execution envelope、attempt 状态评论和默认分支",
+            "实现 heartbeat，仅更新当前有效 attempt 的单条状态评论",
+            "实现 dependency、needs-input、capability、transient、verification 和 stale 六种 block kind",
+            "实现 resume 创建新 attempt，并按批准计划 maxAttempts 拒绝未授权重试",
+            "在 backlog、ready、in-progress 和 blocked 间切换唯一 status:* 标签并支持 status:blocked",
+            "以最早有效 claim 评论裁决并发领取，冲突方记录 superseded 事件后停止且不修改任务状态"
+          ],
+          "allowedPaths": [
+            "scripts/task-runtime.mjs",
+            "scripts/task-state.mjs",
+            "scripts/issue-sync.mjs",
+            "test/task-runtime.test.mjs",
+            "test/task-state.test.mjs"
+          ],
+          "outOfScope": [
+            "自动重试或自动 resume",
+            "提交 Pull Request 或完成任务",
+            "同时执行多个顺序任务"
+          ],
+          "priority": "P0",
+          "dependsOn": [
+            "IWF-20260723-T04"
+          ],
+          "acceptanceCriteria": [
+            "claim 只接受 open、status:ready、依赖已关闭且无 active attempt 的 Task",
+            "heartbeat、block 和 resume 只能作用于匹配的当前 attempt，重复调用结果幂等",
+            "resume 创建递增 attempt 且超过 maxAttempts 时零写入失败",
+            "并发 claim 中最早有效评论唯一获胜，冲突方 superseded 且不得改变任务状态",
+            "任一时刻 Issue 只保留一个受管 status:* 标签"
+          ],
+          "verificationSteps": [
+            "node --test test/task-state.test.mjs test/task-runtime.test.mjs"
+          ]
+        },
+        {
+          "id": "IWF-20260723-T06",
+          "title": "实现提交证据与 PR 范围门禁",
+          "goal": "实现 task submit，验证 completion result、验收与验证证据以及 Pull Request 的身份和文件范围。",
+          "value": "任务只有在提供完整证据且 PR 严格位于批准范围内时才能进入评审，避免越界代码混入交付。",
+          "context": "现有工作流依赖执行者在 PR 正文手工总结，没有程序化核对 envelope 摘要、验收覆盖、分支、关闭引用或权威 PR 文件列表。",
+          "expectedBehavior": "submit 先完成全部只读校验；任何无效证据或 PR 范围错误均零写入，只有 success 结果创建提交事件并把任务设为 status:in-review。",
+          "scope": [
+            "校验 completion result schema、task/attempt 身份、envelope digest 和 result digest",
+            "要求每个验收运行 ID 与 required check 都有成功证据，artifact 只记录允许的 URL 与摘要字段",
+            "校验 PR 仓库、base、head 分支与 execution envelope 一致，且正文包含 Closes #<task-issue>",
+            "从 GitHub PR files 获取权威 added、modified、removed 和 renamed 列表",
+            "要求每个新增、修改、删除路径以及 rename 的前后路径均匹配 allowedPaths 的 exact path 或目录前缀",
+            "将合法的 partial 或 failed 结果转为 blocked，只有 success 结果进入 in-review"
+          ],
+          "allowedPaths": [
+            "scripts/task-runtime.mjs",
+            "scripts/runtime-validation.mjs",
+            "test/task-runtime.test.mjs",
+            "test/runtime-validation.test.mjs"
+          ],
+          "outOfScope": [
+            "信任本地 git diff 代替 GitHub PR files",
+            "合并 Pull Request 或关闭 Issue",
+            "提供 OS 级 allowedSideEffects 沙箱"
+          ],
+          "priority": "P0",
+          "dependsOn": [
+            "IWF-20260723-T05"
+          ],
+          "acceptanceCriteria": [
+            "缺失验收、缺失或失败验证、摘要不匹配和跨 attempt 结果均在写入前失败",
+            "错误 repo、base、head、缺少精确关闭引用或非当前 PR 均在写入前失败",
+            "越界新增、修改、删除路径和 rename 任一端越界均在写入前失败",
+            "合法 partial 或 failed 结果记录阻塞证据，完整 success 结果幂等进入 status:in-review",
+            "所有校验失败场景的 GitHub 写入计数为零"
+          ],
+          "verificationSteps": [
+            "node --test test/runtime-validation.test.mjs test/task-runtime.test.mjs"
+          ]
+        },
+        {
+          "id": "IWF-20260723-T07",
+          "title": "实现完成、过期与依赖协调",
+          "goal": "实现 reconcile 对 stale attempt、合并与检查证据、Issue 关闭来源和后继依赖进行幂等协调。",
+          "value": "任务完成和下一任务 ready 由权威远端证据决定，不会因超时、手工关闭或缺失检查产生错误推进。",
+          "context": "现有同步器只设置初始状态，不会判断 heartbeat 过期、PR merge、required checks 或 Issue 是否由正确关闭引用关闭。",
+          "expectedBehavior": "过期 attempt 只转 blocked；in-review 任务只有在 PR 已合并、全部声明检查成功、无 pending/failing 检查、Issue 由关闭引用关闭且提交证据仍有效时才 complete 并解锁后继。",
+          "scope": [
+            "按 maxRuntimeSeconds 与 heartbeatIntervalSeconds 识别 stale attempt，记录 stale 事件并转 status:blocked",
+            "协调 Pull Request merge 状态、check runs、commit statuses、requiredChecks 和 pending/failing 结果",
+            "验证 Issue 由已提交 PR 的 Closes 引用关闭，拒绝手工关闭、未合并 PR 和失效完成证据",
+            "幂等记录 complete 不可变事件，并仅在全部依赖 Issue 已关闭后把后继任务从 backlog 推进到 ready",
+            "保留人工关系、人工标签和未由当前计划管理的 Issue 状态"
+          ],
+          "allowedPaths": [
+            "scripts/task-runtime.mjs",
+            "scripts/task-state.mjs",
+            "test/task-runtime.test.mjs",
+            "test/task-state.test.mjs"
+          ],
+          "outOfScope": [
+            "自动创建新 attempt 或自动重试 stale 任务",
+            "自动合并 PR、关闭 Issue 或移除人工关系",
+            "把缺失检查视为成功"
+          ],
+          "priority": "P0",
+          "dependsOn": [
+            "IWF-20260723-T06"
+          ],
+          "acceptanceCriteria": [
+            "stale attempt 只记录一次事件并进入 blocked，不创建后继 attempt",
+            "pending、failing 或 missing required check 使任务保持 in-review 并输出未满足证据",
+            "只有已合并 PR、全部检查成功、有效完成证据和正确关闭来源同时满足时才记录 complete",
+            "手工关闭、未合并 PR、无检查或关闭引用不匹配均不能完成或解锁任务",
+            "重复 reconcile 不重复事件，且只有所有依赖关闭的后继任务会进入 ready"
+          ],
+          "verificationSteps": [
+            "node --test test/task-state.test.mjs test/task-runtime.test.mjs"
+          ]
+        },
+        {
+          "id": "IWF-20260723-T08",
+          "title": "提供任务生命周期 CLI",
+          "goal": "提供独立 task CLI 入口和六个 npm scripts，暴露完整生命周期且不扩大现有 plan/apply 参数解析器。",
+          "value": "人和智能体可以通过稳定、机器可读且可安全重跑的命令执行任务运行协议。",
+          "context": "现有 CLI 只提供 plan:validate、issues:preview 和 issues:apply；生命周期领域能力尚无公共命令和统一 preflight。",
+          "expectedBehavior": "六个命令要求公共计划、仓库和批准摘要参数，严格解析各自参数，向 stdout 输出 JSON、向 stderr 输出错误，并在失败时保持零写入。",
+          "scope": [
+            "新增 task:claim --task-id --agent",
+            "新增 task:heartbeat --attempt-id 和可选 --note",
+            "新增 task:block --attempt-id --kind --reason",
+            "新增 task:resume --task-id --from-attempt --agent",
+            "新增 task:submit --attempt-id --pr --result <file|->",
+            "新增 task:reconcile，并为所有命令实现 --plan、--repo 和 --approval-digest 公共参数",
+            "在任何远端写入前校验批准状态、规范化摘要、目标仓库和 base revision",
+            "默认分支使用 iwf/<task-id-lowercase>-a<attempt-number> 并在 submit 时强制匹配"
+          ],
+          "allowedPaths": [
+            "scripts/task-workflow.mjs",
+            "scripts/task-runtime.mjs",
+            "package.json",
+            "test/task-cli.test.mjs"
+          ],
+          "outOfScope": [
+            "修改现有 issue-workflow CLI 的参数语义",
+            "建设常驻 dispatcher 或后台进程",
+            "替调用方创建本地实现分支或执行验证命令"
+          ],
+          "priority": "P0",
+          "dependsOn": [
+            "IWF-20260723-T07"
+          ],
+          "acceptanceCriteria": [
+            "六个 npm scripts 只接受各自声明参数且缺失、重复或未知参数明确失败",
+            "所有命令在批准摘要、仓库或 revision 不匹配时于任何写入前失败",
+            "成功命令向 stdout 输出稳定 JSON，诊断只写 stderr 且不污染 JSON",
+            "result 可从文件或 stdin 读取，默认分支生成和 submit 校验一致",
+            "幂等重跑返回当前结果且不会重复状态评论或事件"
+          ],
+          "verificationSteps": [
+            "node --test test/task-cli.test.mjs"
+          ]
+        },
+        {
+          "id": "IWF-20260723-T09",
+          "title": "完成远程协议、集成回归与 CI 切换",
+          "goal": "更新公开协议与文档，增加离线端到端回归，并让 CI 同时守护 v1.0、v1.1 和运行态行为。",
+          "value": "远程使用者能够按文档执行新生命周期，且兼容性和关键门禁在每次变更中得到自动验证。",
+          "context": "现有 WORKFLOW、README 和 CI 只描述 v1.0 的人工执行流程，也没有覆盖完整 apply 到 reconcile 的离线场景。",
+          "expectedBehavior": "文档准确说明版本兼容、字段、评论协议、命令和停止条件；fake adapter 端到端测试证明下一任务仅在完整远端证据后 ready，CI 不访问真实 GitHub。",
+          "scope": [
+            "更新 WORKFLOW 和 README，说明 v1.0 兼容、v1.1 management/execution、attempt 评论协议、生命周期命令和停止条件",
+            "新增离线 fake-adapter 集成测试，覆盖 apply、claim、heartbeat、submit、merge/check、reconcile 和下一任务 ready",
+            "让 CI 校验 v1.0 与 v1.1 示例、所有批准计划和完整测试套件",
+            "记录 planning PR、issues:preview、issues:apply 和后续逐任务 squash PR 的 rollout 顺序"
+          ],
+          "allowedPaths": [
+            "WORKFLOW.md",
+            "README.md",
+            ".github/workflows/test.yml",
+            "examples/issue-plan.example.json",
+            "examples/issue-plan.v1.1.example.json",
+            "test/task-integration.test.mjs"
+          ],
+          "outOfScope": [
+            "在测试或 CI 中访问、创建或修改真实 GitHub 资源",
+            "回写或迁移现有 v1.0 批准计划",
+            "新增 Web UI、GitHub Projects、dispatcher、自动重试、OS 沙箱或附件服务"
+          ],
+          "priority": "P1",
+          "dependsOn": [
+            "IWF-20260723-T08"
+          ],
+          "acceptanceCriteria": [
+            "WORKFLOW 和 README 可独立指导 v1.0 与 v1.1 使用者完成安全的计划与任务生命周期",
+            "离线集成测试覆盖 apply 到下一任务 ready，并证明失败检查、越界 PR 和手工关闭不会推进依赖",
+            "CI 同时验证两个示例、所有批准计划和完整测试，且没有真实 GitHub 网络写入",
+            "rollout 文档要求规划 PR 合并前不创建 Epic、Task、标签或实现分支，并要求每个任务一个 Closes 引用的 squash PR"
+          ],
+          "verificationSteps": [
+            "npm test",
+            "npm run plan:validate -- --plan examples/issue-plan.example.json",
+            "npm run plan:validate -- --plan examples/issue-plan.v1.1.example.json",
+            "for plan in .github/issue-plans/*.json; do npm run plan:validate -- --plan \"$plan\"; done"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -37,6 +37,17 @@ function relationships(record, refs, reverse) {
   ].join("\n");
 }
 
+function managementSection(management) {
+  if (!management) return [];
+  const lines = ["", "## Management", ""];
+  lines.push(`- Owner: ${management.owner ? `\`${management.owner}\`` : "None"}`);
+  lines.push(`- Estimate: ${management.estimateHours === undefined ? "None" : `${management.estimateHours} hours`}`);
+  lines.push(`- Due date: ${management.dueDate ? `\`${management.dueDate}\`` : "None"}`);
+  lines.push(`- Cycle: ${management.cycle ? `\`${management.cycle}\`` : "None"}`);
+  lines.push(`- Tags: ${management.tags?.length ? management.tags.map((tag) => `\`${tag}\``).join(", ") : "None"}`);
+  return lines;
+}
+
 export function renderManagedBody(plan, record, refs = new Map(), reverse = new Map()) {
   return [
     MANAGED_START,
@@ -57,6 +68,7 @@ export function renderManagedBody(plan, record, refs = new Map(), reverse = new 
     "## Context",
     "",
     record.context,
+    ...managementSection(record.management),
     "",
     "## Expected behavior",
     "",

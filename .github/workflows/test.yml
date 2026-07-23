@@ -19,4 +19,9 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run plan:validate -- --plan examples/issue-plan.example.json
-      - run: npm run plan:validate -- --plan .github/issue-plans/IWF-20260722.json
+      - run: npm run plan:validate -- --plan examples/issue-plan.v1.1.example.json
+      - name: Validate repository plans
+        run: |
+          for plan in .github/issue-plans/*.json; do
+            npm run plan:validate -- --plan "$plan"
+          done

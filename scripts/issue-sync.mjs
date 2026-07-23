@@ -3,6 +3,7 @@ import {
   flattenPlan,
   labelsForExisting,
   labelsForNew,
+  managementLabels,
   parseIdentity,
   reverseDependencies,
 } from "./plan-domain.mjs";
@@ -18,6 +19,7 @@ export const WORKFLOW_LABELS = [
   { name: "status:ready", color: "0E8A16", description: "Dependencies are closed and work may start" },
   { name: "status:in-progress", color: "FBCA04", description: "Implementation is active" },
   { name: "status:in-review", color: "8250DF", description: "Pull request is under automated review" },
+  { name: "status:blocked", color: "D73A4A", description: "Execution is blocked and requires recovery" },
 ];
 
 function labelNames(issue) {
@@ -69,18 +71,45 @@ function identitiesForPlan(issues, planId) {
   return byTaskId;
 }
 
-async function syncLabels(adapter, repository, preview, operations) {
+async function syncLabels(adapter, repository, records, preview, operations) {
   const current = new Map((await adapter.listLabels(repository)).map((label) => [label.name, label]));
-  for (const desired of WORKFLOW_LABELS) {
+  const dynamic = metadataLabels(records);
+  for (const desired of [...WORKFLOW_LABELS, ...dynamic]) {
+    const managed = /^(?:tag|cycle):/.test(desired.name);
     const existing = current.get(desired.name);
     if (!existing) {
-      operations.push({ resource: "label", action: "create", name: desired.name });
+      operations.push({ resource: "label", action: "create", name: desired.name, ...(managed ? { managed: true } : {}) });
       if (!preview) await adapter.createLabel(repository, desired);
     } else if (!sameLabelDefinition(existing, desired)) {
-      operations.push({ resource: "label", action: "update", name: desired.name });
+      operations.push({ resource: "label", action: "update", name: desired.name, ...(managed ? { managed: true } : {}) });
       if (!preview) await adapter.updateLabel(repository, existing.name, desired);
     }
   }
+}
+
+function metadataLabels(records) {
+  const labels = new Map();
+  for (const record of records) {
+    for (const name of managementLabels(record)) {
+      if (labels.has(name)) continue;
+      const isCycle = name.startsWith("cycle:");
+      labels.set(name, {
+        name,
+        color: isCycle ? "5319E7" : "0E8A16",
+        description: isCycle ? "Managed workflow cycle" : "Managed workflow tag",
+      });
+    }
+  }
+  return [...labels.values()];
+}
+
+async function validateOwners(adapter, repository, records) {
+  const owners = [...new Set(records.map((record) => record.management?.owner).filter(Boolean))];
+  if (!owners.length) return;
+  if (typeof adapter.getAssignee !== "function") {
+    throw new Error("GitHub adapter cannot validate Issue assignees");
+  }
+  for (const owner of owners) await adapter.getAssignee(repository, owner);
 }
 
 export async function syncIssues({ plan, repository, adapter, preview = false }) {
@@ -91,7 +120,8 @@ export async function syncIssues({ plan, repository, adapter, preview = false })
 
   const existingIssues = await adapter.listIssues(repository);
   const byTaskId = identitiesForPlan(existingIssues, plan.plan.id);
-  await syncLabels(adapter, repository, preview, operations);
+  await validateOwners(adapter, repository, records);
+  await syncLabels(adapter, repository, records, preview, operations);
 
   const refs = new Map();
   for (const record of records) {
@@ -103,16 +133,23 @@ export async function syncIssues({ plan, repository, adapter, preview = false })
   for (const record of records) {
     let issue = byTaskId.get(record.id);
     if (!issue) {
-      operations.push({ resource: "issue", action: "create", id: record.id });
+      operations.push({
+        resource: "issue",
+        action: "create",
+        id: record.id,
+        fields: ["body", "labels", ...(record.management?.owner ? ["assignees"] : [])],
+      });
       if (preview) {
         outcomes.set(record.id, { id: record.id, number: null, url: null, created: true, updated: false });
         continue;
       }
       const managedBody = renderManagedBody(plan, record, refs, reverse);
+      const assignees = record.management?.owner ? [record.management.owner] : undefined;
       issue = await adapter.createIssue(repository, {
         title: `[${record.id}] ${record.title}`,
         body: mergeManagedBody("", managedBody),
         labels: labelsForNew(record),
+        ...(assignees ? { assignees } : {}),
       });
       byTaskId.set(record.id, issue);
       refs.set(record.id, issueRef(issue));
@@ -131,20 +168,30 @@ export async function syncIssues({ plan, repository, adapter, preview = false })
     if (!issue) continue;
     const desiredBody = mergeManagedBody(issue.body, renderManagedBody(plan, record, refs, reverse));
     const desiredLabels = labelsForExistingIssue(record, labelNames(issue));
+    const currentAssignees = (issue.assignees || [])
+      .map((assignee) => typeof assignee === "string" ? assignee : assignee.login)
+      .filter(Boolean);
+    const desiredAssignees = record.management?.owner
+      ? [...new Set([...currentAssignees, record.management.owner])]
+      : null;
     const bodyChanged = String(issue.body || "") !== desiredBody;
     const labelsChanged = !sameLabels(labelNames(issue), desiredLabels);
-    if (bodyChanged || labelsChanged) {
+    const assigneesChanged = desiredAssignees
+      ? desiredAssignees.slice().sort().join("\n") !== currentAssignees.slice().sort().join("\n")
+      : false;
+    if (bodyChanged || labelsChanged || assigneesChanged) {
       operations.push({
         resource: "issue",
         action: "update",
         id: record.id,
         number: issue.number,
-        fields: [bodyChanged ? "body" : null, labelsChanged ? "labels" : null].filter(Boolean),
+        fields: [bodyChanged ? "body" : null, labelsChanged ? "labels" : null, assigneesChanged ? "assignees" : null].filter(Boolean),
       });
       if (!preview) {
         const updated = await adapter.updateIssue(repository, issue.number, {
           body: desiredBody,
           labels: desiredLabels,
+          ...(desiredAssignees ? { assignees: desiredAssignees } : {}),
         });
         byTaskId.set(record.id, updated);
       }
@@ -155,7 +202,7 @@ export async function syncIssues({ plan, repository, adapter, preview = false })
       number: issue.number,
       url: issue.html_url || issue.url,
       created: previous?.created || false,
-      updated: bodyChanged || labelsChanged,
+      updated: bodyChanged || labelsChanged || assigneesChanged,
     });
   }
 

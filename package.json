@@ -10,6 +10,12 @@
     "plan:validate": "node scripts/issue-workflow.mjs plan:validate",
     "issues:preview": "node scripts/issue-workflow.mjs issues:preview",
     "issues:apply": "node scripts/issue-workflow.mjs issues:apply",
+    "task:claim": "node scripts/task-workflow.mjs task:claim",
+    "task:heartbeat": "node scripts/task-workflow.mjs task:heartbeat",
+    "task:block": "node scripts/task-workflow.mjs task:block",
+    "task:resume": "node scripts/task-workflow.mjs task:resume",
+    "task:submit": "node scripts/task-workflow.mjs task:submit",
+    "task:reconcile": "node scripts/task-workflow.mjs task:reconcile",
     "test": "node --test"
   },
   "dependencies": {
