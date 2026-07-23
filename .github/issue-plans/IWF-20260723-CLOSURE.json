@@ -1,0 +1,118 @@
+{
+  "$schema": "../issue-plan.v1.1.schema.json",
+  "schemaVersion": "1.1",
+  "workflow": {
+    "repository": "sine-io/issue-workflow-kit",
+    "revision": "9074826edf59f839bc0cc42986d04b3b0d4b6b31"
+  },
+  "plan": {
+    "id": "IWF-20260723-CLOSURE",
+    "title": "GitHub PR 关闭证据兼容修复计划",
+    "goal": "让 task:reconcile 在 GitHub REST timeline 的 closed 事件省略 closer 字段时，仍能基于有序且交叉验证的 PR 关闭证据安全完成任务。",
+    "language": "zh-CN",
+    "baseRevision": "9074826edf59f839bc0cc42986d04b3b0d4b6b31"
+  },
+  "approval": {
+    "status": "approved",
+    "digest": "a807b1e8ddbf254f308369d098dbf49f56256f4f7b9efbbab6fc07f8c9a2ca9e",
+    "approvedAt": "2026-07-23T09:37:00Z",
+    "approvedBy": "kisscelia"
+  },
+  "epics": [
+    {
+      "id": "IWF-20260723-CLOSURE-E01",
+      "title": "兼容 GitHub 实际 PR 关闭时间线",
+      "goal": "修复 reconcile 对 source-less closed 事件的误判，同时保持完成门禁和幂等性。",
+      "value": "通过带 Closes 引用的合规 squash PR 完成的任务可以被可靠记录为 complete，维护者无需绕过生命周期协议。",
+      "context": "真实 GitHub 数据中，PR cross-referenced 事件包含来源 PR，而紧随合并产生的 closed 事件可能同时省略 source 和 commit_id；GraphQL closingIssuesReferences 仍能确认 PR 声明了目标 Issue。",
+      "expectedBehavior": "reconcile 接受同一 PR 在 closed 之前出现的原生 cross-reference 作为 timeline 回退证据，并继续要求 Issue 已关闭、GraphQL closing reference、PR 合并、head 不变和必需检查成功；证据不完整时保持 in-review。",
+      "scope": [
+        "在现有 direct closer 和 merge commit 证据之后增加有序 PR cross-reference 回退",
+        "为真实 GitHub timeline 形状和拒绝路径增加运行态回归测试",
+        "用修复后的 CLI 重新 reconcile 被阻塞的迁移任务"
+      ],
+      "allowedPaths": [
+        "scripts/task-runtime.mjs",
+        "test/task-runtime.test.mjs"
+      ],
+      "outOfScope": [
+        "修改 GitHub adapter、GraphQL 查询、schema、CLI 参数或公开协议",
+        "放宽 PR 合并、head、required checks、closingIssuesReferences 或 Issue closed 门禁",
+        "直接编辑受管 attempt 评论、complete 事件或 Issue 状态以绕过 reconcile"
+      ],
+      "priority": "P0",
+      "dependsOn": [],
+      "acceptanceCriteria": [
+        "唯一任务通过一个带关闭引用的 squash PR 完成",
+        "真实 GitHub 形状的 PR cross-reference 在前且 source-less closed 在后时可完成 reconcile",
+        "直接 closer source 和 merge commit 两种既有关闭证据继续有效",
+        "手工关闭、普通 Issue 引用、closed 之后的 PR 引用或缺失 GraphQL closing reference 均不能完成任务",
+        "重复 reconcile 不重复 attempt 更新或 complete 事件",
+        "完整测试和全部批准计划校验通过"
+      ],
+      "verificationSteps": [
+        "npm ci",
+        "node --test test/task-runtime.test.mjs",
+        "npm test",
+        "for plan in .github/issue-plans/*.json; do npm run plan:validate -- --plan \"$plan\"; done"
+      ],
+      "tasks": [
+        {
+          "id": "IWF-20260723-CLOSURE-T01",
+          "title": "识别有序的 PR cross-reference 关闭证据",
+          "goal": "让 closedByPullRequest 兼容 GitHub source-less closed 事件，并用正反例锁定安全边界。",
+          "value": "已由合规 PR 关闭的任务可以通过 lifecycle CLI 完成审计和后续 Epic 收尾。",
+          "context": "当前实现仅检查 closed 事件自身的 source 或 commit_id，因此真实 PR #35 虽已合并、检查成功并由 GraphQL 确认为 closer，reconcile 仍错误返回 issueClosedByPullRequest false。",
+          "expectedBehavior": "按 timeline 顺序扫描事件；同一来源 PR 的原生 cross-reference 只有出现在 source-less closed 之前才可作为回退，且最终仍与现有 GraphQL closing reference 及其他完成证据取交集。",
+          "scope": [
+            "识别 cross-referenced 事件中带 pull_request 元数据的来源 PR",
+            "仅让已在前序出现的匹配 PR 引用支持后续 source-less closed 事件",
+            "保留 closed 事件直接 source 和 merge_commit_sha 匹配行为",
+            "增加成功、顺序错误、普通 Issue 引用和 closing reference 缺失的回归覆盖"
+          ],
+          "allowedPaths": [
+            "scripts/task-runtime.mjs",
+            "test/task-runtime.test.mjs"
+          ],
+          "outOfScope": [
+            "新增 GitHub API 或修改 adapter",
+            "仅凭 Issue closed、PR merged 或正文 Closes 文本判定完成",
+            "修改 task submit、claim、状态标签或完成结果 schema"
+          ],
+          "priority": "P0",
+          "dependsOn": [],
+          "acceptanceCriteria": [
+            "匹配 PR cross-reference 在 source-less closed 之前且 GraphQL closing reference 存在时 reconcile 记录 complete",
+            "cross-reference 来自普通 Issue、属于其他 PR、出现在 closed 之后或 GraphQL closing reference 缺失时保持 in-review",
+            "closed 事件直接引用 PR 或 merge commit 的既有路径保持通过",
+            "成功路径重复执行保持零写入",
+            "node --test test/task-runtime.test.mjs、npm test 和全部仓库计划校验通过"
+          ],
+          "verificationSteps": [
+            "npm ci",
+            "node --test test/task-runtime.test.mjs",
+            "npm test",
+            "for plan in .github/issue-plans/*.json; do npm run plan:validate -- --plan \"$plan\"; done"
+          ],
+          "execution": {
+            "agent": "codex",
+            "commitPolicy": "required",
+            "allowedSideEffects": [
+              "git:branch:write",
+              "git:commit:write",
+              "git:push",
+              "github:issues:write",
+              "github:pull-requests:write"
+            ],
+            "maxRuntimeSeconds": 7200,
+            "maxAttempts": 1,
+            "heartbeatIntervalSeconds": 300,
+            "requiredChecks": [
+              "test"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
