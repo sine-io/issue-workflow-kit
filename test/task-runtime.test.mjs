@@ -47,6 +47,7 @@ class RuntimeAdapter {
     this.pullRequest = null;
     this.checks = [];
     this.timeline = [];
+    this.closingIssues = [{ number: this.issue.number, repository: { nameWithOwner: repository } }];
   }
 
   async listIssues() { return structuredClone(this.issues); }
@@ -86,6 +87,7 @@ class RuntimeAdapter {
     const attempt = this.comments.map((comment) => parseMarker(comment.body, "attempt")).find(Boolean);
     return {
       number,
+      node_id: "pr-node",
       state: "open",
       body: `Implementation evidence\n\nCloses #${this.issue.number}`,
       base: { ref: "main", repo: { full_name: repository } },
@@ -96,6 +98,7 @@ class RuntimeAdapter {
   async listPullRequestFiles() { return structuredClone(this.files); }
   async listCommitChecks() { return structuredClone(this.checks); }
   async listIssueTimeline() { return structuredClone(this.timeline); }
+  async listPullRequestClosingIssues() { return structuredClone(this.closingIssues); }
 }
 
 const at = (value) => () => new Date(value);
@@ -317,6 +320,96 @@ test("reconcile completes only merged, checked, closing-reference submissions", 
   assert.deepEqual(adapter.writes, []);
 });
 
+test("reconcile accepts a PR cross-reference before a source-less closed event", async () => {
+  const plan = approvedPlan();
+  const taskId = plan.epics[0].tasks[0].id;
+  const adapter = new RuntimeAdapter(plan);
+  const claim = await claimTask({ plan, repository, taskId, agent: "example-agent", adapter });
+  await submitTask({ plan, repository, attemptId: claim.attemptId, pr: 25, result: completionFor(claim.envelope), adapter });
+  await markMerged(adapter, 25, claim.envelope.requiredChecks);
+  adapter.timeline = [
+    { event: "cross-referenced", source: { type: "issue", issue: { number: 25, pull_request: {} } } },
+    { event: "closed", source: null, commit_id: null },
+  ];
+  adapter.writes = [];
+
+  const result = await reconcileTasks({ plan, repository, adapter });
+  assert.ok(result.operations.some((operation) => operation.action === "complete-event"));
+  assert.equal(result.reports[0].evidence.issueClosedByPullRequest, true);
+
+  adapter.writes = [];
+  const repeated = await reconcileTasks({ plan, repository, adapter });
+  assert.deepEqual(repeated.operations, []);
+  assert.deepEqual(adapter.writes, []);
+});
+
+test("reconcile preserves merge commit closure evidence", async () => {
+  const plan = approvedPlan();
+  const taskId = plan.epics[0].tasks[0].id;
+  const adapter = new RuntimeAdapter(plan);
+  const claim = await claimTask({ plan, repository, taskId, agent: "example-agent", adapter });
+  await submitTask({ plan, repository, attemptId: claim.attemptId, pr: 26, result: completionFor(claim.envelope), adapter });
+  await markMerged(adapter, 26, claim.envelope.requiredChecks);
+  adapter.timeline = [{ event: "closed", commit_id: "merge-sha" }];
+  adapter.writes = [];
+
+  const result = await reconcileTasks({ plan, repository, adapter });
+  assert.ok(result.operations.some((operation) => operation.action === "complete-event"));
+  assert.equal(result.reports[0].evidence.issueClosedByPullRequest, true);
+});
+
+test("source-less closure fallback rejects incomplete or out-of-order evidence", async () => {
+  const scenarios = [
+    {
+      name: "ordinary Issue reference",
+      timeline: (prNumber) => [
+        { event: "cross-referenced", source: { type: "issue", issue: { number: prNumber } } },
+        { event: "closed", source: null, commit_id: null },
+      ],
+    },
+    {
+      name: "different pull request",
+      timeline: (prNumber) => [
+        { event: "cross-referenced", source: { type: "issue", issue: { number: prNumber + 1, pull_request: {} } } },
+        { event: "closed", source: null, commit_id: null },
+      ],
+    },
+    {
+      name: "pull request reference after close",
+      timeline: (prNumber) => [
+        { event: "closed", source: null, commit_id: null },
+        { event: "cross-referenced", source: { type: "issue", issue: { number: prNumber, pull_request: {} } } },
+      ],
+    },
+    {
+      name: "missing GraphQL closing reference",
+      timeline: (prNumber) => [
+        { event: "cross-referenced", source: { type: "issue", issue: { number: prNumber, pull_request: {} } } },
+        { event: "closed", source: null, commit_id: null },
+      ],
+      closingIssues: [],
+    },
+  ];
+
+  for (const [index, scenario] of scenarios.entries()) {
+    const plan = approvedPlan();
+    const taskId = plan.epics[0].tasks[0].id;
+    const adapter = new RuntimeAdapter(plan);
+    const prNumber = 30 + index;
+    const claim = await claimTask({ plan, repository, taskId, agent: "example-agent", adapter });
+    await submitTask({ plan, repository, attemptId: claim.attemptId, pr: prNumber, result: completionFor(claim.envelope), adapter });
+    await markMerged(adapter, prNumber, claim.envelope.requiredChecks);
+    adapter.timeline = scenario.timeline(prNumber);
+    if (scenario.closingIssues) adapter.closingIssues = scenario.closingIssues;
+    adapter.writes = [];
+
+    const result = await reconcileTasks({ plan, repository, adapter });
+    assert.equal(result.reports[0].status, "in-review", scenario.name);
+    assert.equal(result.reports[0].evidence.issueClosedByPullRequest, false, scenario.name);
+    assert.deepEqual(adapter.writes, [], scenario.name);
+  }
+});
+
 test("missing checks and manual Issue closure remain in review", async () => {
   const plan = approvedPlan();
   const taskId = plan.epics[0].tasks[0].id;
@@ -325,7 +418,7 @@ test("missing checks and manual Issue closure remain in review", async () => {
   await submitTask({ plan, repository, attemptId: claim.attemptId, pr: 22, result: completionFor(claim.envelope), adapter });
   await markMerged(adapter, 22, claim.envelope.requiredChecks, { closure: false });
   adapter.checks = [];
-  adapter.timeline.unshift({ event: "cross-referenced", source: { issue: { number: 22, pull_request: {} } } });
+  adapter.timeline.push({ event: "cross-referenced", source: { issue: { number: 22, pull_request: {} } } });
   adapter.writes = [];
 
   const result = await reconcileTasks({ plan, repository, adapter });

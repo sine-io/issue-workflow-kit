@@ -538,12 +538,31 @@ function sourceIssueNumber(event) {
   ) || null;
 }
 
+function isPullRequestCrossReference(event, prNumber) {
+  return event?.event === "cross-referenced"
+    && sourceIssueNumber(event) === prNumber
+    && Boolean(event?.source?.issue?.pull_request || event?.source?.pull_request);
+}
+
 function closedByPullRequest(issue, timeline, pullRequest) {
   if (String(issue.state).toLowerCase() !== "closed") return false;
   const prNumber = Number(pullRequest.number);
-  const closedEvents = timeline.filter((event) => event.event === "closed");
-  if (closedEvents.some((event) => sourceIssueNumber(event) === prNumber)) return true;
-  if (pullRequest.merge_commit_sha && closedEvents.some((event) => event.commit_id === pullRequest.merge_commit_sha)) return true;
+  let referencedByPullRequest = false;
+  for (const event of timeline) {
+    if (event.event === "reopened") {
+      referencedByPullRequest = false;
+      continue;
+    }
+    if (isPullRequestCrossReference(event, prNumber)) {
+      referencedByPullRequest = true;
+      continue;
+    }
+    if (event.event !== "closed") continue;
+    if (sourceIssueNumber(event) === prNumber) return true;
+    if (pullRequest.merge_commit_sha && event.commit_id === pullRequest.merge_commit_sha) return true;
+    // GitHub may emit the PR only on an earlier cross-reference and leave closed source-less.
+    if (referencedByPullRequest) return true;
+  }
   return false;
 }
 
