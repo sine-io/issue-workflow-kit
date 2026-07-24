@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sine.io/issue-workflow-kit/task-review.v2.schema.json",
+  "title": "Issue Workflow Kit task-review/v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "planId", "planDigest", "taskId", "envelopeDigest", "commitSha", "verdict", "summary", "findings", "runner", "reviewPromptRevision", "reviewedAt"],
+  "properties": {
+    "schemaVersion": { "const": "task-review/v2" },
+    "kind": { "enum": ["spec", "code"] },
+    "planId": { "type": "string", "pattern": "^IWF-[A-Z0-9_-]+$" },
+    "planDigest": { "$ref": "#/$defs/digest" },
+    "taskId": { "type": "string", "pattern": "^[A-Z][A-Z0-9_-]*$" },
+    "envelopeDigest": { "$ref": "#/$defs/digest" },
+    "commitSha": { "$ref": "#/$defs/sha" },
+    "verdict": { "enum": ["approved", "changes-requested"] },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 1000 },
+    "findings": {
+      "type": "array",
+      "maxItems": 50,
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "runner": { "$ref": "#/$defs/runner" },
+    "reviewPromptRevision": { "$ref": "#/$defs/nonEmpty" },
+    "reviewedAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "path": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$" },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["severity", "requirementIds", "path", "line", "message"],
+      "properties": {
+        "severity": { "enum": ["blocker", "high", "medium", "low"] },
+        "requirementIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^REQ-[0-9]{3}$" } },
+        "path": { "anyOf": [{ "$ref": "#/$defs/path" }, { "type": "null" }] },
+        "line": { "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }] },
+        "message": { "type": "string", "minLength": 1, "maxLength": 1000 }
+      }
+    },
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "cliVersion", "model", "promptRevision", "skillRevision"],
+      "properties": {
+        "provider": { "const": "codex" },
+        "cliVersion": { "$ref": "#/$defs/nonEmpty" },
+        "model": { "$ref": "#/$defs/nonEmpty" },
+        "promptRevision": { "$ref": "#/$defs/nonEmpty" },
+        "skillRevision": { "$ref": "#/$defs/nonEmpty" }
+      }
+    }
+  }
+}

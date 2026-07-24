@@ -87,3 +87,17 @@ test("runtime adapter paginates authoritative PR closing Issue references", asyn
   const issues = await adapter.listPullRequestClosingIssues("pr-node");
   assert.deepEqual(issues.map((issue) => issue.number), [1, 2]);
 });
+
+test("runtime adapter maps the dedicated IWF identity to GitHub CLI authentication", () => {
+  let childEnvironment;
+  const adapter = new GitHubAdapter({
+    env: { PATH: "/bin", IWF_TOKEN: "dedicated-token", GH_TOKEN: "unrelated-token" },
+    runner: (_args, options) => {
+      childEnvironment = options.env;
+      return { status: 0, stdout: "gh version 2.0.0", stderr: "" };
+    },
+  });
+  adapter.checkCli();
+  assert.equal(childEnvironment.GH_TOKEN, "dedicated-token");
+  assert.equal(childEnvironment.IWF_TOKEN, "dedicated-token");
+});

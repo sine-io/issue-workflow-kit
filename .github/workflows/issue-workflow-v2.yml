@@ -1,0 +1,357 @@
+name: Issue Workflow Kit v2
+
+on:
+  workflow_call:
+    inputs:
+      config-path:
+        required: false
+        type: string
+        default: .github/issue-workflow.yml
+      kit_repository:
+        required: true
+        type: string
+      kit_revision:
+        required: true
+        type: string
+      codex_version:
+        required: true
+        type: string
+    secrets:
+      IWF_TOKEN:
+        required: true
+      CODEX_API_KEY:
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iwf-control-${{ github.repository }}
+  cancel-in-progress: false
+
+env:
+  IWF_KIT_REPOSITORY: ${{ inputs.kit_repository }}
+  IWF_KIT_REVISION: ${{ inputs.kit_revision }}
+  IWF_CODEX_VERSION: ${{ inputs.codex_version }}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      plan_path: ${{ steps.prepare.outputs.plan_path }}
+      has_task: ${{ steps.prepare.outputs.has_task }}
+    steps:
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.IWF_TOKEN }}
+          fetch-depth: 0
+          path: target
+          persist-credentials: false
+      - name: Checkout pinned kit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.IWF_KIT_REPOSITORY }}
+          ref: ${{ env.IWF_KIT_REVISION }}
+          path: kit
+          persist-credentials: false
+      - name: Install kit dependencies
+        working-directory: target
+        run: npm ci --prefix ../kit
+      - name: Validate the approved plan and claim one task
+        id: prepare
+        env:
+          IWF_TOKEN: ${{ secrets.IWF_TOKEN }}
+        run: |
+          PLAN_PATH="$(node ../kit/scripts/select-active-plan.mjs .github/issue-plans)"
+          VALIDATE_ARGS=(--root . --config "${{ inputs['config-path'] }}" --plan "$PLAN_PATH" --require-approval)
+          BASE_REF="${{ github.event.before }}"
+          if [ -n "$BASE_REF" ] && [ "$BASE_REF" != "0000000000000000000000000000000000000000" ]; then
+            VALIDATE_ARGS+=(--base-ref "$BASE_REF")
+          fi
+          node ../kit/bin/iwf.mjs validate "${VALIDATE_ARGS[@]}"
+          node ../kit/scripts/workflow-control.mjs prepare --plan "$PLAN_PATH" --repo "${{ github.repository }}" --envelope /tmp/iwf-envelope.json > /tmp/iwf-prepare.json
+          printf 'plan_path=%s\n' "$PLAN_PATH" >> "$GITHUB_OUTPUT"
+          node -e 'const fs=require("fs"); const r=JSON.parse(fs.readFileSync("/tmp/iwf-prepare.json")); fs.appendFileSync(process.env.GITHUB_OUTPUT, `has_task=${r.status === "claimed"}\n`);'
+        working-directory: target
+      - name: Upload task envelope
+        if: steps.prepare.outputs.has_task == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: iwf-envelope
+          path: /tmp/iwf-envelope.json
+          if-no-files-found: error
+
+  runner:
+    needs: prepare
+    if: needs.prepare.outputs.has_task == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: target
+          persist-credentials: false
+      - name: Checkout pinned kit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.IWF_KIT_REPOSITORY }}
+          ref: ${{ env.IWF_KIT_REVISION }}
+          path: kit
+          persist-credentials: false
+      - name: Install kit dependencies
+        working-directory: target
+        run: npm ci --prefix ../kit
+      - name: Download task envelope
+        uses: actions/download-artifact@v4
+        with:
+          name: iwf-envelope
+          path: /tmp/iwf-envelope
+      - name: Checkout the immutable task base
+        working-directory: target
+        run: |
+          BASE_SHA="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("/tmp/iwf-envelope/iwf-envelope.json")).baseRevision)')"
+          git cat-file -e "$BASE_SHA^{commit}"
+          git checkout --detach "$BASE_SHA"
+      - name: Install the pinned Codex CLI
+        run: npm install --global "@openai/codex@${IWF_CODEX_VERSION}"
+      - name: Run Codex in the task workspace
+        env:
+          CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+        working-directory: target
+        run: |
+          mkdir -p /tmp/iwf-runner
+          node ../kit/scripts/codex-runner.mjs \
+            --envelope /tmp/iwf-envelope/iwf-envelope.json \
+            --workspace "$GITHUB_WORKSPACE/target" \
+            --output /tmp/iwf-runner/task-completion.json
+      - name: Bundle the runner commit without credentials
+        if: success()
+        working-directory: target
+        run: |
+          STATUS="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("/tmp/iwf-runner/task-completion.json")).status)')"
+          if [ "$STATUS" = completed ]; then
+            BASE_SHA="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("/tmp/iwf-envelope/iwf-envelope.json")).baseRevision)')"
+            HEAD_SHA="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("/tmp/iwf-runner/task-completion.json")).commitSha)')"
+            BRANCH="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("/tmp/iwf-envelope/iwf-envelope.json")).branch)')"
+            BUNDLE_REF="refs/heads/$BRANCH"
+            ! git show-ref --verify --quiet "$BUNDLE_REF"
+            git update-ref "$BUNDLE_REF" "$HEAD_SHA"
+            trap 'git update-ref -d "$BUNDLE_REF"' EXIT
+            git bundle create /tmp/iwf-runner/task.bundle "$BUNDLE_REF" "^$BASE_SHA"
+            git bundle verify /tmp/iwf-runner/task.bundle
+          fi
+      - name: Upload completion and commit bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iwf-runner-output
+          path: |
+            /tmp/iwf-envelope/iwf-envelope.json
+            /tmp/iwf-runner/task-completion.json
+            /tmp/iwf-runner/task.bundle
+          if-no-files-found: error
+
+  publish:
+    needs: [prepare, runner]
+    if: needs.prepare.outputs.has_task == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    outputs:
+      plan_path: ${{ needs.prepare.outputs.plan_path }}
+      head_sha: ${{ steps.submit.outputs.head_sha }}
+      pr_number: ${{ steps.submit.outputs.pr_number }}
+      status: ${{ steps.submit.outputs.status }}
+    steps:
+      - name: Checkout target repository with the automation identity
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.IWF_TOKEN }}
+          fetch-depth: 0
+          path: target
+      - name: Checkout pinned kit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.IWF_KIT_REPOSITORY }}
+          ref: ${{ env.IWF_KIT_REVISION }}
+          path: kit
+          persist-credentials: false
+      - name: Install kit dependencies
+        working-directory: target
+        run: npm ci --prefix ../kit
+      - name: Download runner output
+        uses: actions/download-artifact@v4
+        with:
+          name: iwf-runner-output
+          path: /tmp/iwf-runner-output
+      - name: Push the runner commit and create one task PR
+        id: submit
+        env:
+          IWF_TOKEN: ${{ secrets.IWF_TOKEN }}
+        working-directory: target
+        run: |
+          node ../kit/scripts/workflow-control.mjs submit \
+            --plan "${{ needs.prepare.outputs.plan_path }}" \
+            --repo "${{ github.repository }}" \
+            --envelope /tmp/iwf-runner-output/iwf-envelope.json \
+            --completion /tmp/iwf-runner-output/task-completion.json \
+            --bundle /tmp/iwf-runner-output/task.bundle > /tmp/iwf-submit.json
+          node -e 'const fs=require("fs"); const r=JSON.parse(fs.readFileSync("/tmp/iwf-submit.json")); fs.appendFileSync(process.env.GITHUB_OUTPUT, `head_sha=${r.prHeadSha || ""}\npr_number=${r.prNumber || ""}\nstatus=${r.status}\n`);'
+
+  spec-review:
+    needs: [prepare, runner, publish]
+    if: needs.prepare.outputs.has_task == 'true' && needs.publish.outputs.status == 'in-review'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.publish.outputs.head_sha }}
+          path: target
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.IWF_KIT_REPOSITORY }}
+          ref: ${{ env.IWF_KIT_REVISION }}
+          path: kit
+          persist-credentials: false
+      - name: Install kit dependencies
+        working-directory: target
+        run: npm ci --prefix ../kit
+      - uses: actions/download-artifact@v4
+        with:
+          name: iwf-runner-output
+          path: /tmp/iwf-runner-output
+      - run: npm install --global "@openai/codex@${IWF_CODEX_VERSION}"
+      - name: Run independent specification review
+        env:
+          CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+        working-directory: target
+        run: |
+          node ../kit/scripts/codex-reviewer.mjs --kind spec \
+            --envelope /tmp/iwf-runner-output/iwf-envelope.json \
+            --completion /tmp/iwf-runner-output/task-completion.json \
+            --workspace "$GITHUB_WORKSPACE/target" --output /tmp/spec-review.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iwf-spec-review
+          path: /tmp/spec-review.json
+
+  code-review:
+    needs: [prepare, runner, publish]
+    if: needs.prepare.outputs.has_task == 'true' && needs.publish.outputs.status == 'in-review'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.publish.outputs.head_sha }}
+          path: target
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.IWF_KIT_REPOSITORY }}
+          ref: ${{ env.IWF_KIT_REVISION }}
+          path: kit
+          persist-credentials: false
+      - name: Install kit dependencies
+        working-directory: target
+        run: npm ci --prefix ../kit
+      - uses: actions/download-artifact@v4
+        with:
+          name: iwf-runner-output
+          path: /tmp/iwf-runner-output
+      - run: npm install --global "@openai/codex@${IWF_CODEX_VERSION}"
+      - name: Run independent code review
+        env:
+          CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+        working-directory: target
+        run: |
+          node ../kit/scripts/codex-reviewer.mjs --kind code \
+            --envelope /tmp/iwf-runner-output/iwf-envelope.json \
+            --completion /tmp/iwf-runner-output/task-completion.json \
+            --workspace "$GITHUB_WORKSPACE/target" --output /tmp/code-review.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iwf-code-review
+          path: /tmp/code-review.json
+
+  merge:
+    needs: [prepare, publish, spec-review, code-review]
+    if: always() && needs.prepare.outputs.has_task == 'true' && needs.publish.result == 'success' && needs.publish.outputs.status == 'in-review'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.IWF_TOKEN }}
+          fetch-depth: 0
+          path: target
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.IWF_KIT_REPOSITORY }}
+          ref: ${{ env.IWF_KIT_REVISION }}
+          path: kit
+          persist-credentials: false
+      - name: Install kit dependencies
+        working-directory: target
+        run: npm ci --prefix ../kit
+      - uses: actions/download-artifact@v4
+        with:
+          name: iwf-runner-output
+          path: /tmp/iwf-runner-output
+      - uses: actions/download-artifact@v4
+        if: needs['spec-review'].result == 'success'
+        with:
+          name: iwf-spec-review
+          path: /tmp/iwf-spec-review
+      - uses: actions/download-artifact@v4
+        if: needs['code-review'].result == 'success'
+        with:
+          name: iwf-code-review
+          path: /tmp/iwf-code-review
+      - name: Record both reviews against the fixed head
+        id: record-reviews
+        if: needs['spec-review'].result == 'success' && needs['code-review'].result == 'success'
+        env:
+          IWF_TOKEN: ${{ secrets.IWF_TOKEN }}
+        working-directory: target
+        run: |
+          PLAN_PATH="${{ needs.prepare.outputs.plan_path }}"
+          node ../kit/scripts/workflow-control.mjs record-review --plan "$PLAN_PATH" --repo "${{ github.repository }}" \
+            --envelope /tmp/iwf-runner-output/iwf-envelope.json --completion /tmp/iwf-runner-output/task-completion.json --review /tmp/iwf-spec-review/spec-review.json
+          node ../kit/scripts/workflow-control.mjs record-review --plan "$PLAN_PATH" --repo "${{ github.repository }}" \
+            --envelope /tmp/iwf-runner-output/iwf-envelope.json --completion /tmp/iwf-runner-output/task-completion.json --review /tmp/iwf-code-review/code-review.json
+      - name: Block failed independent review
+        if: always() && (needs['spec-review'].result != 'success' || needs['code-review'].result != 'success' || steps['record-reviews'].outcome != 'success')
+        env:
+          IWF_TOKEN: ${{ secrets.IWF_TOKEN }}
+        working-directory: target
+        run: |
+          node ../kit/scripts/workflow-control.mjs block-review --plan "${{ needs.prepare.outputs.plan_path }}" --repo "${{ github.repository }}" \
+            --envelope /tmp/iwf-runner-output/iwf-envelope.json --completion /tmp/iwf-runner-output/task-completion.json \
+            --reason "an independent review job or review recording step failed"
+      - name: Merge only after all gates and dispatch the next serial task
+        if: needs['spec-review'].result == 'success' && needs['code-review'].result == 'success' && steps['record-reviews'].outcome == 'success'
+        env:
+          IWF_TOKEN: ${{ secrets.IWF_TOKEN }}
+        working-directory: target
+        run: |
+          node ../kit/scripts/workflow-control.mjs merge --plan "${{ needs.prepare.outputs.plan_path }}" --repo "${{ github.repository }}" \
+            --envelope /tmp/iwf-runner-output/iwf-envelope.json --completion /tmp/iwf-runner-output/task-completion.json

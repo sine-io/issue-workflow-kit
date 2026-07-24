@@ -6,6 +6,42 @@ agent may be a person, a shell script, or an AI system. The GitHub CLI examples
 below are concrete commands, but the required behavior is the contract rather
 than a particular client.
 
+## v2 installable control plane
+
+When the target repository has `.github/issue-workflow.yml`, use the v2 protocol and the exact `kit.revision` Tag recorded there. The target repository owns its structure and instructions; install only the config, `.github/issue-plans/`, `.codex/skills/iwf-plan/`, and the caller Workflow. Never copy, generate, overwrite, or delete an `AGENTS.md`.
+
+### v2 planning contract
+
+Planning produces a same-directory `behavior-contract.md` and `plan.json` with `schemaVersion: "2.0"`. Ask one focused clarification at a time until terminology, boundaries, exceptions, data/security constraints, and unacceptable behavior are explicit. Every requirement has a stable `REQ-NNN` ID. Every task declares requirement IDs, exact allowed paths, exclusions, dependencies, acceptance items, verification commands, timeout, and required checks; each acceptance and verification item carries requirement IDs. Tasks are serial and each task is one Issue and one PR.
+
+The digest covers canonical plan content without the root `approval` object, including the contract SHA-256, workflow Tag, Runner, model, prompt/skill revisions, and base commit. Validate before publication:
+
+```text
+iwf validate --plan .github/issue-plans/<plan-id>/plan.json
+iwf plan publish --plan .github/issue-plans/<plan-id>/plan.json
+```
+
+Merging the planning PR is the only human business approval. After it is on the default branch, an approved plan is immutable. A change to requirements, boundaries, dependencies, allowed paths, acceptance, Runner/model, workflow revision, or base commit requires a new planning PR and digest.
+
+### v2 execution protocol
+
+The reusable Workflow checks the merged planning PR, creates stable Issue identities, and claims only the earliest dependency-unblocked task. Its envelope includes repository/default branch, current and plan base SHA, plan and contract digests, task/requirement IDs, allowed paths, acceptance and verification definitions, attempt and timeout, required checks, and Runner metadata.
+
+Codex runs as `codex exec --ephemeral --ignore-user-config --sandbox workspace-write --output-schema ...` with `CODEX_API_KEY` scoped to that process. The Runner receives no `IWF_TOKEN`, `GITHUB_TOKEN`, or `GH_TOKEN`; it cannot call GitHub or write outside its task workspace. The wrapper validates JSONL command events, allowed paths (including both names of a rename), evidence IDs, actual local commit SHA, and secret/local-path redaction before writing `task-completion/v2`.
+
+Two independent read-only Codex runs review the same submitted commit: Spec Review traces behavior to REQ IDs, and Code Review checks quality, boundaries, security, and regression risk. Both must approve, all configured CI checks must succeed, the PR must contain only the current `Closes #<issue>` reference, and GitHub must report the same head SHA before an automatic squash merge. Reconcile records completion only after the PR is merged and the Issue is closed by that PR; manual closure never unlocks a task.
+
+Transient network or rate-limit failures may retry once when the approved task allows a second attempt. Test failure, scope violation, digest/base mismatch, requirement conflict, review opposition, missing checks, changed head, or stale heartbeat becomes blocked and stops the sequence. Recovery requires a human repair or a new plan PR; never guess or silently modify acceptance.
+
+Release automation is explicit and post-merge only: a task may declare `github:tag:vX.Y.Z` in `execution.allowedSideEffects`. After the squash commit, the orchestrator creates that tag idempotently at the merge commit before recording completion; the Runner never creates tags or receives GitHub write credentials.
+
+Use `IWF_TOKEN` for the least-privilege bot identity that performs GitHub writes and Workflow dispatch. Use `CODEX_API_KEY` only in Runner/review steps. Keep both in repository or organization Secrets and document rotation/revocation outside the repository; neither value may appear in an Issue, artifact, log, or command argument.
+
+Only Issues, event comments, and task PRs whose GitHub creator is the current
+`IWF_TOKEN` bot identity are authoritative. Human comments remain visible but
+cannot advance, block, or complete the state machine. Rotate tokens on the same
+bot account; changing the bot identity requires a new approved migration plan.
+
 ## Rules that apply first
 
 1. Read this file at the `workflow.repository` and `workflow.revision` recorded

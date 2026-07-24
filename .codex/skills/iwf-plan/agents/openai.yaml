@@ -1,0 +1,4 @@
+interface:
+  display_name: "IWF Plan"
+  short_description: "Create traceable Issue Workflow Kit plans"
+  default_prompt: "Use $iwf-plan to clarify this request and produce a behavior contract plus a validated v2 plan."
