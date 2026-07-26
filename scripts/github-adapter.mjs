@@ -40,7 +40,10 @@ export class GitHubAdapter {
     retries = 4,
   } = {}) {
     this.runner = runner;
-    this.env = env;
+    // GitHub CLI only consumes GH_TOKEN/GITHUB_TOKEN. Keep the public
+    // protocol name IWF_TOKEN while mapping it at the adapter boundary.
+    this.env = { ...env };
+    if (this.env.IWF_TOKEN) this.env.GH_TOKEN = this.env.IWF_TOKEN;
     this.sleep = sleep;
     this.retries = retries;
   }
@@ -96,6 +99,72 @@ export class GitHubAdapter {
 
   getRepository(repository) {
     return this.api("GET", `repos/${repository}`);
+  }
+
+  getAuthenticatedUser() {
+    return this.api("GET", "user");
+  }
+
+  getBranch(repository, branch) {
+    return this.api("GET", `repos/${repository}/branches/${encodeURIComponent(branch)}`);
+  }
+
+  getBranchProtection(repository, branch) {
+    return this.api("GET", `repos/${repository}/branches/${encodeURIComponent(branch)}/protection`);
+  }
+
+  getActionsWorkflowPermissions(repository) {
+    return this.api("GET", `repos/${repository}/actions/permissions/workflow`);
+  }
+
+  async listActionsSecrets(repository) {
+    const names = [];
+    for (let page = 1; ; page += 1) {
+      const result = this.api("GET", `repos/${repository}/actions/secrets?per_page=100&page=${page}`);
+      const batch = result.secrets || [];
+      names.push(...batch);
+      if (batch.length < 100) return names;
+    }
+  }
+
+  async listPullRequests(repository, { state = "open", head, base } = {}) {
+    const pulls = [];
+    for (let page = 1; ; page += 1) {
+      const query = new URLSearchParams({ state, per_page: "100", page: String(page) });
+      if (head) query.set("head", head);
+      if (base) query.set("base", base);
+      const batch = this.api("GET", `repos/${repository}/pulls?${query}`);
+      pulls.push(...batch);
+      if (batch.length < 100) return pulls;
+    }
+  }
+
+  createPullRequest(repository, pullRequest) {
+    return this.api("POST", `repos/${repository}/pulls`, pullRequest);
+  }
+
+  updatePullRequest(repository, number, pullRequest) {
+    return this.api("PATCH", `repos/${repository}/pulls/${encodeURIComponent(number)}`, pullRequest);
+  }
+
+  mergePullRequest(repository, number, merge) {
+    return this.api("PUT", `repos/${repository}/pulls/${encodeURIComponent(number)}/merge`, merge);
+  }
+
+  getGitReference(repository, ref) {
+    return this.api("GET", `repos/${repository}/git/ref/${encodeURIComponent(ref)}`);
+  }
+
+  createGitReference(repository, ref, sha) {
+    return this.api("POST", `repos/${repository}/git/refs`, { ref, sha });
+  }
+
+  dispatchWorkflow(repository, workflow, { ref, inputs = {} } = {}) {
+    return this.api("POST", `repos/${repository}/actions/workflows/${encodeURIComponent(workflow)}/dispatches`, { ref, inputs });
+  }
+
+  createPullRequestReview(repository, number, review) {
+    return this.api("POST", `repos/${repository}/pulls/${encodeURIComponent(number)}/reviews`, review);
   }
 
   getCommit(repository, revision) {

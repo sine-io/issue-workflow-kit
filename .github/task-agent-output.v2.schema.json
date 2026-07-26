@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Structured final output from the Codex task runner",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "summary", "acceptance", "blockedReason"],
+  "properties": {
+    "status": { "enum": ["completed", "blocked"] },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 1000 },
+    "acceptance": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "requirementId", "status", "evidence"],
+        "properties": {
+          "id": { "type": "string" },
+          "requirementId": { "type": "string", "pattern": "^REQ-[0-9]{3}$" },
+          "status": { "enum": ["success", "failed"] },
+          "evidence": { "type": "array", "minItems": 1, "maxItems": 10, "items": { "type": "string", "minLength": 1, "maxLength": 1000 } }
+        }
+      }
+    },
+    "blockedReason": { "anyOf": [{ "type": "null" }, { "type": "string", "minLength": 1, "maxLength": 1000 }] }
+  }
+}

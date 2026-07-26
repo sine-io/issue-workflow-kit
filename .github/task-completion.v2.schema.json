@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sine.io/issue-workflow-kit/task-completion.v2.schema.json",
+  "title": "Issue Workflow Kit task-completion/v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "planId", "planDigest", "taskId", "attemptId", "envelopeDigest",
+    "status", "baseRevision", "commitSha", "changedFiles", "acceptance", "verification",
+    "runner", "startedAt", "finishedAt", "block"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "task-completion/v2" },
+    "planId": { "type": "string", "pattern": "^IWF-[A-Z0-9_-]+$" },
+    "planDigest": { "$ref": "#/$defs/digest" },
+    "taskId": { "$ref": "#/$defs/id" },
+    "attemptId": { "type": "string", "pattern": "^[A-Z][A-Z0-9_-]*-A[0-9]{2}$" },
+    "envelopeDigest": { "$ref": "#/$defs/digest" },
+    "status": { "enum": ["completed", "blocked"] },
+    "baseRevision": { "$ref": "#/$defs/sha" },
+    "commitSha": { "anyOf": [{ "$ref": "#/$defs/sha" }, { "type": "null" }] },
+    "changedFiles": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/file" } },
+    "acceptance": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/acceptanceEvidence" } },
+    "verification": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/verificationEvidence" } },
+    "runner": { "$ref": "#/$defs/runner" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "finishedAt": { "type": "string", "format": "date-time" },
+    "block": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/block" }] }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "id": { "type": "string", "pattern": "^[A-Z][A-Z0-9_-]*$" },
+    "requirementId": { "type": "string", "pattern": "^REQ-[0-9]{3}$" },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "path": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$" },
+    "evidence": { "type": "array", "minItems": 1, "maxItems": 10, "items": { "type": "string", "minLength": 1, "maxLength": 1000 } },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "status"],
+      "properties": {
+        "path": { "$ref": "#/$defs/path" },
+        "status": { "enum": ["added", "modified", "deleted", "renamed"] },
+        "previousPath": { "$ref": "#/$defs/path" }
+      }
+    },
+    "acceptanceEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "requirementId", "status", "evidence"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Z][A-Z0-9_-]*-AC[0-9]{2}$" },
+        "requirementId": { "$ref": "#/$defs/requirementId" },
+        "status": { "enum": ["success", "failed"] },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "verificationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "requirementIds", "status", "command", "exitCode", "evidence"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Z][A-Z0-9_-]*-V[0-9]{2}$" },
+        "requirementIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/requirementId" } },
+        "status": { "enum": ["success", "failed", "missing"] },
+        "command": { "$ref": "#/$defs/nonEmpty" },
+        "exitCode": { "anyOf": [{ "type": "integer" }, { "type": "null" }] },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "cliVersion", "model", "promptRevision", "skillRevision"],
+      "properties": {
+        "provider": { "const": "codex" },
+        "cliVersion": { "$ref": "#/$defs/nonEmpty" },
+        "model": { "$ref": "#/$defs/nonEmpty" },
+        "promptRevision": { "$ref": "#/$defs/nonEmpty" },
+        "skillRevision": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "reason", "retryable"],
+      "properties": {
+        "kind": { "enum": ["transient", "verification", "scope", "runner", "timeout", "requirement-conflict"] },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "retryable": { "type": "boolean" }
+      }
+    }
+  }
+}

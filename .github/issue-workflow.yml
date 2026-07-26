@@ -1,0 +1,27 @@
+# The kit dogfoods its published alpha tag. Change this only through a planning PR.
+schemaVersion: iwf-config/v2
+kit:
+  repository: sine-io/issue-workflow-kit
+  revision: v2.0.0-alpha.1
+  reusableWorkflow: .github/workflows/issue-workflow-v2.yml
+plans:
+  directory: .github/issue-plans
+runner:
+  provider: codex
+  cliVersion: 0.145.0
+  model: gpt-5.6-sol
+  promptRevision: runner-prompt/v1
+  skillRevision: iwf-plan/v2
+  timeoutSeconds: 7200
+orchestration:
+  serial: true
+  transientRetries: 1
+  reviews:
+    - spec
+    - code
+  mergeMethod: squash
+  requiredChecks:
+    - test
+secrets:
+  githubToken: IWF_TOKEN
+  codexApiKey: CODEX_API_KEY

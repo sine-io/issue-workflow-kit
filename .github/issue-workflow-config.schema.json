@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sine.io/issue-workflow-kit/issue-workflow-config.schema.json",
+  "title": "Issue Workflow Kit repository configuration v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kit", "plans", "runner", "orchestration", "secrets"],
+  "properties": {
+    "schemaVersion": { "const": "iwf-config/v2" },
+    "kit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "revision", "reusableWorkflow"],
+      "properties": {
+        "repository": { "type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$" },
+        "revision": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$" },
+        "reusableWorkflow": { "const": ".github/workflows/issue-workflow-v2.yml" }
+      }
+    },
+    "plans": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["directory"],
+      "properties": {
+        "directory": { "const": ".github/issue-plans" }
+      }
+    },
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "cliVersion", "model", "promptRevision", "skillRevision", "timeoutSeconds"],
+      "properties": {
+        "provider": { "const": "codex" },
+        "cliVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$" },
+        "model": { "type": "string", "minLength": 1 },
+        "promptRevision": { "type": "string", "minLength": 1 },
+        "skillRevision": { "type": "string", "minLength": 1 },
+        "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 604800 }
+      }
+    },
+    "orchestration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["serial", "transientRetries", "reviews", "mergeMethod", "requiredChecks"],
+      "properties": {
+        "serial": { "const": true },
+        "transientRetries": { "const": 1 },
+        "reviews": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "prefixItems": [{ "const": "spec" }, { "const": "code" }],
+          "items": false
+        },
+        "mergeMethod": { "const": "squash" },
+        "requiredChecks": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["githubToken", "codexApiKey"],
+      "properties": {
+        "githubToken": { "const": "IWF_TOKEN" },
+        "codexApiKey": { "const": "CODEX_API_KEY" }
+      }
+    }
+  }
+}

@@ -1,0 +1,203 @@
+{
+  "$schema": "../.github/iwf-plan.v2.schema.json",
+  "schemaVersion": "2.0",
+  "workflow": {
+    "repository": "sine-io/issue-workflow-kit",
+    "revision": "v2.0.0-alpha.1",
+    "reusableWorkflow": ".github/workflows/issue-workflow-v2.yml"
+  },
+  "repository": {
+    "owner": "sine-io",
+    "name": "issue-workflow-kit",
+    "defaultBranch": "main"
+  },
+  "plan": {
+    "id": "IWF-20260724-DEMO",
+    "title": "Installable workflow control plane",
+    "goal": "Install and execute an auditable Issue workflow without copying a template repository.",
+    "language": "en",
+    "baseRevision": "d72d8f9ea1391c1f6d8af17c4adf1b046619397e"
+  },
+  "contract": {
+    "path": "behavior-contract.v2.example.md",
+    "sha256": "7731404dddaa0a32db81b405edd9bb905aeb501f549c6cfb32c3bc6bd3d32fc8"
+  },
+  "runner": {
+    "provider": "codex",
+    "cliVersion": "0.145.0",
+    "model": "gpt-5.6-sol",
+    "promptRevision": "runner-prompt/v1",
+    "skillRevision": "iwf-plan/v2"
+  },
+  "approval": {
+    "status": "draft",
+    "digest": null,
+    "approvedAt": null,
+    "approvedBy": null
+  },
+  "requirements": [
+    {
+      "id": "REQ-001",
+      "title": "Install only the control-plane surface",
+      "behavior": "The initializer installs the configuration, plan directory, planning skill, and reusable-workflow caller needed by a target repository.",
+      "boundaries": [
+        "Existing repository structure and instruction files remain owned by the target repository.",
+        "Installed files stay below `.github` and `.codex/skills/iwf-plan`."
+      ],
+      "exceptions": [
+        "A byte-identical existing file is treated as already installed.",
+        "A conflicting file stops initialization unless replacement was explicitly requested."
+      ],
+      "unacceptableBehavior": [
+        "Copying the complete kit repository into the target repository.",
+        "Replacing an `AGENTS.md` file."
+      ],
+      "acceptanceCriteria": [
+        {
+          "id": "REQ-001-AC01",
+          "statement": "Initialization creates only the declared install surface and preserves unrelated files."
+        }
+      ]
+    },
+    {
+      "id": "REQ-002",
+      "title": "Reject untraceable execution evidence",
+      "behavior": "Every task, acceptance result, verification result, and final evidence record identifies the requirement it proves.",
+      "boundaries": [
+        "Requirement IDs are stable `REQ-NNN` identifiers.",
+        "Evidence is accepted only for the immutable task envelope."
+      ],
+      "exceptions": [
+        "A blocked result may explain missing evidence but cannot be treated as completion."
+      ],
+      "unacceptableBehavior": [
+        "Treating natural-language completion claims as structured evidence.",
+        "Changing requirements or allowed paths after plan approval."
+      ],
+      "acceptanceCriteria": [
+        {
+          "id": "REQ-002-AC01",
+          "statement": "Completion is rejected when requirement-linked acceptance or verification evidence is missing."
+        }
+      ]
+    }
+  ],
+  "epics": [
+    {
+      "id": "IWF-20260724-DEMO-E01",
+      "title": "Deliver the installable control plane",
+      "goal": "Provide installation and traceable execution as one approved delivery sequence.",
+      "value": "Repositories can adopt the workflow with a small, auditable footprint.",
+      "context": "The v1 workflow is remotely referenced but is not installed or automatically orchestrated.",
+      "expectedBehavior": "Two serial tasks install and validate the control plane.",
+      "scope": ["Install the target files.", "Validate traceable execution records."],
+      "allowedPaths": ["scripts/**", "templates/**", "test/**", ".github/**", ".codex/**"],
+      "outOfScope": ["Publishing to npm.", "Parallel task execution."],
+      "priority": "P0",
+      "dependsOn": [],
+      "requirementIds": ["REQ-001", "REQ-002"],
+      "acceptanceCriteria": [
+        {
+          "id": "IWF-20260724-DEMO-E01-AC01",
+          "requirementId": "REQ-001",
+          "statement": "The install and evidence tasks complete serially."
+        }
+      ],
+      "verificationSteps": [
+        {
+          "id": "IWF-20260724-DEMO-E01-V01",
+          "requirementIds": ["REQ-001", "REQ-002"],
+          "command": "npm test",
+          "expected": "All tests exit successfully."
+        }
+      ],
+      "execution": {
+        "agent": "codex",
+        "commitPolicy": "required",
+        "allowedSideEffects": [],
+        "maxRuntimeSeconds": 3600,
+        "maxAttempts": 2,
+        "heartbeatIntervalSeconds": 300,
+        "requiredChecks": ["test"]
+      },
+      "tasks": [
+        {
+          "id": "IWF-20260724-DEMO-T01",
+          "title": "Install the minimum target surface",
+          "goal": "Add an idempotent initializer.",
+          "value": "Adopters receive only the files needed to call the kit.",
+          "context": "There is no install command in v1.",
+          "expectedBehavior": "Initialization writes the declared files and stops on conflicts.",
+          "scope": ["Create configuration, plan directory, skill, and workflow caller."],
+          "allowedPaths": ["scripts/**", "templates/**", "test/**", "package.json", "package-lock.json"],
+          "outOfScope": ["Copying the complete kit."],
+          "priority": "P0",
+          "dependsOn": [],
+          "requirementIds": ["REQ-001"],
+          "acceptanceCriteria": [
+            {
+              "id": "IWF-20260724-DEMO-T01-AC01",
+              "requirementId": "REQ-001",
+              "statement": "Initialization creates only the declared install surface and preserves unrelated files."
+            }
+          ],
+          "verificationSteps": [
+            {
+              "id": "IWF-20260724-DEMO-T01-V01",
+              "requirementIds": ["REQ-001"],
+              "command": "node --test test/v2-install.test.mjs",
+              "expected": "Initializer tests exit successfully."
+            }
+          ],
+          "execution": {
+            "agent": "codex",
+            "commitPolicy": "required",
+            "allowedSideEffects": [],
+            "maxRuntimeSeconds": 1800,
+            "maxAttempts": 2,
+            "heartbeatIntervalSeconds": 300,
+            "requiredChecks": ["test"]
+          }
+        },
+        {
+          "id": "IWF-20260724-DEMO-T02",
+          "title": "Validate requirement-linked evidence",
+          "goal": "Reject incomplete or untraceable completion records.",
+          "value": "Every merge can be replayed back to its approved requirement.",
+          "context": "v1 evidence identifies acceptance runs but not stable requirement IDs.",
+          "expectedBehavior": "Completion validates plan, envelope, commit, paths, tests, and requirement evidence together.",
+          "scope": ["Define v2 envelope and completion schemas.", "Validate full traceability."],
+          "allowedPaths": ["scripts/**", ".github/task-envelope.v2.schema.json", ".github/task-completion.v2.schema.json", "test/**"],
+          "outOfScope": ["Accepting prose-only completion."],
+          "priority": "P0",
+          "dependsOn": ["IWF-20260724-DEMO-T01"],
+          "requirementIds": ["REQ-002"],
+          "acceptanceCriteria": [
+            {
+              "id": "IWF-20260724-DEMO-T02-AC01",
+              "requirementId": "REQ-002",
+              "statement": "Completion is rejected when requirement-linked acceptance or verification evidence is missing."
+            }
+          ],
+          "verificationSteps": [
+            {
+              "id": "IWF-20260724-DEMO-T02-V01",
+              "requirementIds": ["REQ-002"],
+              "command": "node --test test/v2-runner.test.mjs",
+              "expected": "Evidence validation tests exit successfully."
+            }
+          ],
+          "execution": {
+            "agent": "codex",
+            "commitPolicy": "required",
+            "allowedSideEffects": [],
+            "maxRuntimeSeconds": 1800,
+            "maxAttempts": 2,
+            "heartbeatIntervalSeconds": 300,
+            "requiredChecks": ["test"]
+          }
+        }
+      ]
+    }
+  ]
+}

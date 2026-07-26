@@ -1,0 +1,220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sine.io/issue-workflow-kit/iwf-plan.v2.schema.json",
+  "title": "Issue Workflow Kit plan v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "workflow", "repository", "plan", "contract", "runner", "approval", "requirements", "epics"],
+  "properties": {
+    "$schema": { "type": "string", "minLength": 1 },
+    "schemaVersion": { "const": "2.0" },
+    "workflow": { "$ref": "#/$defs/workflow" },
+    "repository": { "$ref": "#/$defs/repository" },
+    "plan": { "$ref": "#/$defs/plan" },
+    "contract": { "$ref": "#/$defs/contract" },
+    "runner": { "$ref": "#/$defs/runner" },
+    "approval": { "$ref": "#/$defs/approval" },
+    "requirements": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/requirement" }
+    },
+    "epics": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/epic" }
+    }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "id": { "type": "string", "pattern": "^[A-Z][A-Z0-9_-]*$" },
+    "requirementId": { "type": "string", "pattern": "^REQ-[0-9]{3}$" },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
+    },
+    "stringList": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/nonEmpty" }
+    },
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "revision", "reusableWorkflow"],
+      "properties": {
+        "repository": { "type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$" },
+        "revision": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$" },
+        "reusableWorkflow": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner", "name", "defaultBranch"],
+      "properties": {
+        "owner": { "type": "string", "pattern": "^[^/\\s]+$" },
+        "name": { "type": "string", "pattern": "^[^/\\s]+$" },
+        "defaultBranch": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "goal", "language", "baseRevision"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^IWF-[0-9]{8}(?:-[A-Z0-9_-]+)?$" },
+        "title": { "$ref": "#/$defs/nonEmpty" },
+        "goal": { "$ref": "#/$defs/nonEmpty" },
+        "language": { "$ref": "#/$defs/nonEmpty" },
+        "baseRevision": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      }
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/path" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }
+      }
+    },
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "cliVersion", "model", "promptRevision", "skillRevision"],
+      "properties": {
+        "provider": { "const": "codex" },
+        "cliVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$" },
+        "model": { "$ref": "#/$defs/nonEmpty" },
+        "promptRevision": { "$ref": "#/$defs/nonEmpty" },
+        "skillRevision": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "digest", "approvedAt", "approvedBy"],
+      "properties": {
+        "status": { "enum": ["draft", "approved"] },
+        "digest": { "anyOf": [{ "type": "null" }, { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }] },
+        "approvedAt": { "anyOf": [{ "type": "null" }, { "type": "string", "format": "date-time" }] },
+        "approvedBy": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/nonEmpty" }] }
+      }
+    },
+    "requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "behavior", "boundaries", "exceptions", "unacceptableBehavior", "acceptanceCriteria"],
+      "properties": {
+        "id": { "$ref": "#/$defs/requirementId" },
+        "title": { "$ref": "#/$defs/nonEmpty" },
+        "behavior": { "$ref": "#/$defs/nonEmpty" },
+        "boundaries": { "$ref": "#/$defs/stringList" },
+        "exceptions": { "$ref": "#/$defs/stringList" },
+        "unacceptableBehavior": { "$ref": "#/$defs/stringList" },
+        "acceptanceCriteria": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/criterion" }
+        }
+      }
+    },
+    "criterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "statement"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^REQ-[0-9]{3}-AC[0-9]{2}$" },
+        "statement": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent", "commitPolicy", "allowedSideEffects", "maxRuntimeSeconds", "maxAttempts", "heartbeatIntervalSeconds", "requiredChecks"],
+      "properties": {
+        "agent": { "$ref": "#/$defs/nonEmpty" },
+        "commitPolicy": { "const": "required" },
+        "allowedSideEffects": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/nonEmpty" } },
+        "maxRuntimeSeconds": { "type": "integer", "minimum": 1, "maximum": 604800 },
+        "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 2 },
+        "heartbeatIntervalSeconds": { "type": "integer", "minimum": 1, "maximum": 86400 },
+        "requiredChecks": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/nonEmpty" } }
+      }
+    },
+    "record": {
+      "type": "object",
+      "required": ["id", "title", "goal", "value", "context", "expectedBehavior", "scope", "allowedPaths", "outOfScope", "priority", "dependsOn", "requirementIds", "acceptanceCriteria", "verificationSteps", "execution"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "$ref": "#/$defs/nonEmpty" },
+        "goal": { "$ref": "#/$defs/nonEmpty" },
+        "value": { "$ref": "#/$defs/nonEmpty" },
+        "context": { "$ref": "#/$defs/nonEmpty" },
+        "expectedBehavior": { "$ref": "#/$defs/nonEmpty" },
+        "scope": { "$ref": "#/$defs/stringList" },
+        "allowedPaths": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/path" } },
+        "outOfScope": { "$ref": "#/$defs/stringList" },
+        "priority": { "enum": ["P0", "P1", "P2"] },
+        "dependsOn": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+        "requirementIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/requirementId" } },
+        "acceptanceCriteria": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/taskCriterion" }
+        },
+        "verificationSteps": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/verification" }
+        },
+        "execution": { "$ref": "#/$defs/execution" }
+      }
+    },
+    "taskCriterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "requirementId", "statement"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Z][A-Z0-9_-]*-AC[0-9]{2}$" },
+        "requirementId": { "$ref": "#/$defs/requirementId" },
+        "statement": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "requirementIds", "command", "expected"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Z][A-Z0-9_-]*-V[0-9]{2}$" },
+        "requirementIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/requirementId" } },
+        "command": { "$ref": "#/$defs/nonEmpty" },
+        "expected": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "epic": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/$defs/record" },
+        {
+          "type": "object",
+          "required": ["tasks"],
+          "properties": { "tasks": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/task" } } }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "task": {
+      "type": "object",
+      "allOf": [{ "$ref": "#/$defs/record" }],
+      "unevaluatedProperties": false
+    }
+  }
+}

@@ -1,0 +1,32 @@
+name: Issue Workflow Kit
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/issue-plans/**
+      - .github/issue-workflow.yml
+      - .github/workflows/issue-workflow.yml
+  schedule:
+    - cron: "17 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iwf-caller-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  issue-workflow:
+    uses: sine-io/issue-workflow-kit/.github/workflows/issue-workflow-v2.yml@v2.0.0-alpha.1
+    with:
+      config-path: .github/issue-workflow.yml
+      kit_repository: sine-io/issue-workflow-kit
+      kit_revision: v2.0.0-alpha.1
+      codex_version: 0.145.0
+    secrets:
+      IWF_TOKEN: ${{ secrets.IWF_TOKEN }}
+      CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}

@@ -6,6 +6,7 @@ import path from "node:path";
 import process from "node:process";
 
 import Ajv2020 from "ajv/dist/2020.js";
+import { validateV2Plan } from "./v2-plan.mjs";
 
 const schemaUrls = {
   "1.0": new URL("../.github/issue-plan.schema.json", import.meta.url),
@@ -49,6 +50,7 @@ export function approvalDigest(plan) {
 
 function schemaVersionOf(plan) {
   const version = plan && typeof plan === "object" ? plan.schemaVersion : undefined;
+  if (version === "2.0") return version;
   if (!Object.hasOwn(schemaValidators, version)) {
     throw new Error(`unsupported schemaVersion ${version ?? "<missing>"}`);
   }
@@ -178,6 +180,7 @@ function semanticErrors(plan, version) {
 
 export function validatePlan(plan, { requireApproval = false, sourcePath } = {}) {
   const version = schemaVersionOf(plan);
+  if (version === "2.0") return validateV2Plan(plan, { sourcePath, requireApproval });
   const validateSchema = schemaValidators[version];
   if (!validateSchema(plan)) {
     const details = (validateSchema.errors || [])

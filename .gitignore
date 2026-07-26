@@ -3,3 +3,8 @@ node_modules/
 *.log
 .env
 .env.*
+.iwf/
+.iwf-kit/
+task-envelope.json
+task-completion.json
+task-review.json

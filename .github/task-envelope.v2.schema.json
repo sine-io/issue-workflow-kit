@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sine.io/issue-workflow-kit/task-envelope.v2.schema.json",
+  "title": "Issue Workflow Kit task-envelope/v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "repository", "defaultBranch", "baseRevision", "planBaseRevision",
+    "planId", "planDigest", "contractDigest", "workflowRevision", "taskId", "issueNumber",
+    "issueUrl", "branch", "title", "goal", "expectedBehavior", "outOfScope",
+    "requirementIds", "requirements", "allowedPaths", "acceptance", "verification",
+    "attemptId", "attempt", "maxAttempts", "timeoutSeconds", "requiredChecks", "runner"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "task-envelope/v2" },
+    "repository": { "type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$" },
+    "defaultBranch": { "type": "string", "minLength": 1 },
+    "baseRevision": { "$ref": "#/$defs/sha" },
+    "planBaseRevision": { "$ref": "#/$defs/sha" },
+    "planId": { "type": "string", "pattern": "^IWF-[A-Z0-9_-]+$" },
+    "planDigest": { "$ref": "#/$defs/digest" },
+    "contractDigest": { "$ref": "#/$defs/digest" },
+    "workflowRevision": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$" },
+    "taskId": { "$ref": "#/$defs/id" },
+    "issueNumber": { "type": "integer", "minimum": 1 },
+    "issueUrl": { "type": "string", "format": "uri", "minLength": 1 },
+    "branch": { "type": "string", "pattern": "^iwf/[a-z0-9][a-z0-9._/-]*-a[0-9]+$" },
+    "title": { "$ref": "#/$defs/nonEmpty" },
+    "goal": { "$ref": "#/$defs/nonEmpty" },
+    "expectedBehavior": { "$ref": "#/$defs/nonEmpty" },
+    "outOfScope": { "$ref": "#/$defs/stringList" },
+    "requirementIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/requirementId" } },
+    "requirements": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/requirement" } },
+    "allowedPaths": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/path" } },
+    "acceptance": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/acceptance" } },
+    "verification": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/verification" } },
+    "attemptId": { "type": "string", "pattern": "^[A-Z][A-Z0-9_-]*-A[0-9]{2}$" },
+    "attempt": { "type": "integer", "minimum": 1, "maximum": 2 },
+    "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 2 },
+    "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 604800 },
+    "requiredChecks": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/nonEmpty" } },
+    "runner": { "$ref": "#/$defs/runner" }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "id": { "type": "string", "pattern": "^[A-Z][A-Z0-9_-]*$" },
+    "requirementId": { "type": "string", "pattern": "^REQ-[0-9]{3}$" },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "path": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$" },
+    "stringList": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/nonEmpty" } },
+    "requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "behavior", "boundaries", "exceptions", "unacceptableBehavior"],
+      "properties": {
+        "id": { "$ref": "#/$defs/requirementId" },
+        "title": { "$ref": "#/$defs/nonEmpty" },
+        "behavior": { "$ref": "#/$defs/nonEmpty" },
+        "boundaries": { "$ref": "#/$defs/stringList" },
+        "exceptions": { "$ref": "#/$defs/stringList" },
+        "unacceptableBehavior": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "requirementId", "statement"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Z][A-Z0-9_-]*-AC[0-9]{2}$" },
+        "requirementId": { "$ref": "#/$defs/requirementId" },
+        "statement": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "requirementIds", "command", "expected"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Z][A-Z0-9_-]*-V[0-9]{2}$" },
+        "requirementIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/requirementId" } },
+        "command": { "$ref": "#/$defs/nonEmpty" },
+        "expected": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "cliVersion", "model", "promptRevision", "skillRevision"],
+      "properties": {
+        "provider": { "const": "codex" },
+        "cliVersion": { "$ref": "#/$defs/nonEmpty" },
+        "model": { "$ref": "#/$defs/nonEmpty" },
+        "promptRevision": { "$ref": "#/$defs/nonEmpty" },
+        "skillRevision": { "$ref": "#/$defs/nonEmpty" }
+      }
+    }
+  }
+}
